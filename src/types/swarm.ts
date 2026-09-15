@@ -94,6 +94,8 @@ export interface SwarmMetrics {
   worldTime: string;
   worldWeather: string;
   qLearningStats: { avgQValue: number; explorationRate: number; agentsTrained: number };
+  pheromoneIntensity?: number;
+  communicationStats?: any;
 }
 
 export interface AgentTraits {

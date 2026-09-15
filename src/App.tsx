@@ -1,6 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Agent, Resource, SwarmConfig, SwarmMetrics, Vector2D, SwarmEvent, Structure, Threat } from './types/swarm';
 import { createAgent, createResource, establishConnections, calculateMetrics, updateAgent, dist, mag, HiveMind, WorldSimulation, EventLog, ParticleSystem, RecordingSystem, scenarios } from './utils/swarmEngine';
+import { SpatialHash } from './utils/spatialHash';
+import { MultiSwarmSystem } from './utils/multiSwarm';
+import { CommunicationProtocol } from './utils/communicationProtocol';
+import { createPheromoneGrid, decayPheromone, diffusePheromone, depositPheromone, getTotalPheromoneIntensity, PheromoneGrid } from './utils/pheromoneSystem';
+import { LLMService } from './utils/llmService';
+import { SwarmAction, ActionResult } from './utils/llmActionExecutor';
+import LLMPanel from './components/LLMPanel';
+import DirectorPanel from './components/DirectorPanel';
 
 const W = 900, H = 600;
 
@@ -58,6 +66,11 @@ export default function App() {
   const eventLogRef = useRef(new EventLog());
   const particleSystemRef = useRef(new ParticleSystem());
   const recordingRef = useRef(new RecordingSystem());
+  const spatialHashRef = useRef(new SpatialHash<Agent>(80));
+  const multiSwarmRef = useRef(new MultiSwarmSystem());
+  const commProtocolRef = useRef(new CommunicationProtocol());
+  const pheromoneGridRef = useRef<PheromoneGrid>(createPheromoneGrid(W, H, 10));
+  const llmServiceRef = useRef(new LLMService({ enabled: false }));
 
   useEffect(() => { configRef.current = config; }, [config]);
   useEffect(() => { pausedRef.current = isPaused; }, [isPaused]);
@@ -123,15 +136,43 @@ export default function App() {
           setHiveStats(hiveMindRef.current.getStats());
         }
 
+        // Update spatial hash for efficient neighbor lookups
+        spatialHashRef.current.insertAll(ca);
+
+        // Update pheromone grid
+        if (cfg.pheromoneEnabled) {
+          decayPheromone(pheromoneGridRef.current, cfg.pheromoneDecay);
+          diffusePheromone(pheromoneGridRef.current, cfg.pheromoneDiffusion);
+          
+          // Agents deposit pheromones
+          for (const a of ca) {
+            if (a.state === 'working' || a.state === 'alert') {
+              depositPheromone(pheromoneGridRef.current, a.position, 0.1);
+            }
+          }
+        }
+
         const cc = establishConnections(ca, cfg);
         for (const a of ca) {
           const nb = ca.filter(o => o.id !== a.id && dist(a.position, o.position) < a.perceptionRadius);
           updateAgent(a, nb, cr, cfg, W, H, t);
-          if (a.state === 'communicating') msgCountRef.current += 0.1;
+          if (a.state === 'communicating') {
+            msgCountRef.current += 0.1;
+            // Send status update via communication protocol
+            commProtocolRef.current.sendStatusUpdate(a.id, a.energy, a.state);
+          }
           if (a.state === 'alert' && Math.random() < 0.1) {
             particleSystemRef.current.emit(a.position, 3, a.color, 1.5, 20);
+            // Send discovery message
+            const nearbyResource = cr.find(r => r.discovered && dist(a.position, r.position) < a.perceptionRadius);
+            if (nearbyResource) {
+              commProtocolRef.current.sendDiscovery(a.id, nearbyResource.position, nearbyResource.type);
+            }
           }
         }
+
+        // Process communication messages
+        commProtocolRef.current.processMessages(ca.map(a => ({ id: a.id, position: a.position, perceptionRadius: a.perceptionRadius })));
 
         particleSystemRef.current.update();
         recordingRef.current.recordFrame(ca, cr);
@@ -148,6 +189,8 @@ export default function App() {
             worldTime: worldSimRef.current.getTimeString(),
             worldWeather: worldSimRef.current.getState().weather,
             eventRate: eventLogRef.current.getRate(),
+            pheromoneIntensity: cfg.pheromoneEnabled ? getTotalPheromoneIntensity(pheromoneGridRef.current) : 0,
+            communicationStats: commProtocolRef.current.getStats(),
           };
           setMetrics(updatedMetrics);
           setMessageCount(Math.floor(msgCountRef.current));
@@ -167,7 +210,7 @@ export default function App() {
       const canvas = canvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext('2d');
-        if (ctx) render(ctx, agentsRef.current, resourcesRef.current, structuresRef.current, threatsRef.current, particleSystemRef.current.getParticles(), configRef.current, W, H, timeRef.current);
+        if (ctx) render(ctx, agentsRef.current, resourcesRef.current, structuresRef.current, threatsRef.current, particleSystemRef.current.getParticles(), configRef.current, W, H, timeRef.current, configRef.current.pheromoneEnabled ? pheromoneGridRef.current : undefined);
       }
       frame = requestAnimationFrame(loop);
     };
@@ -379,6 +422,57 @@ export default function App() {
 
           {/* Right Panel */}
           <div className="order-3 space-y-3">
+            {/* Qwen Director Panel */}
+            <DirectorPanel
+              llmService={llmServiceRef.current}
+              getContext={() => metrics}
+              onExecuteAction={async (action: SwarmAction): Promise<ActionResult> => {
+                // Execute the action based on type
+                if (action.type === 'adjust_param' && action.param && action.value !== undefined) {
+                  setConfig(prev => ({ ...prev, [action.param!]: action.value }));
+                  return { action, success: true, message: `Adjusted ${action.param} to ${action.value}` };
+                }
+                if (action.type === 'set_behavior' && action.behavior) {
+                  setConfig(prev => ({ ...prev, behavior: action.behavior as any }));
+                  return { action, success: true, message: `Set behavior to ${action.behavior}` };
+                }
+                if (action.type === 'toggle_feature' && action.feature && action.enabled !== undefined) {
+                  setConfig(prev => ({ ...prev, [action.feature!]: action.enabled }));
+                  return { action, success: true, message: `Toggled ${action.feature} ${action.enabled ? 'on' : 'off'}` };
+                }
+                if (action.type === 'pause') {
+                  setIsPaused(true);
+                  return { action, success: true, message: 'Paused simulation' };
+                }
+                if (action.type === 'resume') {
+                  setIsPaused(false);
+                  return { action, success: true, message: 'Resumed simulation' };
+                }
+                return { action, success: false, message: 'Unknown action type' };
+              }}
+              currentParams={{
+                separationWeight: config.separationWeight,
+                alignmentWeight: config.alignmentWeight,
+                cohesionWeight: config.cohesionWeight,
+                explorationWeight: config.explorationWeight,
+                perceptionRadius: config.perceptionRadius,
+                maxSpeed: config.maxSpeed,
+              }}
+              currentFeatures={{
+                pheromoneEnabled: config.pheromoneEnabled,
+                neuralNetEnabled: config.neuralNetEnabled,
+                evolutionEnabled: config.evolutionEnabled,
+                memoryEnabled: config.memoryEnabled,
+                environmentEnabled: config.environmentEnabled,
+              }}
+            />
+
+            {/* Qwen Chat Panel */}
+            <LLMPanel
+              llmService={llmServiceRef.current}
+              getContext={() => metrics}
+            />
+
             {/* World Status */}
             <div className="bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-xl p-3 space-y-2">
               <div className="flex items-center gap-2">
@@ -587,7 +681,7 @@ function Chart({title,data,color}:{title:string;data:number[];color:string}) {
 }
 
 // Rendering
-function render(ctx: CanvasRenderingContext2D, agents: Agent[], resources: Resource[], structures: Structure[], threats: Threat[], particles: any[], config: SwarmConfig, w: number, h: number, time: number) {
+function render(ctx: CanvasRenderingContext2D, agents: Agent[], resources: Resource[], structures: Structure[], threats: Threat[], particles: any[], config: SwarmConfig, w: number, h: number, time: number, pheromoneGrid?: PheromoneGrid) {
   ctx.fillStyle = '#060a14';
   ctx.fillRect(0, 0, w, h);
 
@@ -596,6 +690,21 @@ function render(ctx: CanvasRenderingContext2D, agents: Agent[], resources: Resou
   ctx.lineWidth = 0.5;
   for (let x = 0; x < w; x += 60) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
   for (let y = 0; y < h; y += 60) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+
+  // Pheromone heatmap
+  if (pheromoneGrid && config.showHeatmap) {
+    for (let y = 0; y < pheromoneGrid.height; y++) {
+      for (let x = 0; x < pheromoneGrid.width; x++) {
+        const val = pheromoneGrid.data[y * pheromoneGrid.width + x];
+        if (val > 0.01) {
+          const alpha = Math.min(0.6, val * 0.8);
+          const hue = 180 + val * 60; // cyan to green
+          ctx.fillStyle = `hsla(${hue}, 100%, 50%, ${alpha})`;
+          ctx.fillRect(x * pheromoneGrid.cellSize, y * pheromoneGrid.cellSize, pheromoneGrid.cellSize, pheromoneGrid.cellSize);
+        }
+      }
+    }
+  }
 
   // Scan line
   const scanY = (time * 0.5) % h;
