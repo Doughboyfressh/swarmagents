@@ -9,10 +9,7 @@ import { LLMService } from './utils/llmService';
 import { SwarmAction, ActionResult } from './utils/llmActionExecutor';
 import { StateManager } from './utils/stateManager';
 import { AnalyticsEngine } from './utils/analyticsEngine';
-import LLMPanel from './components/LLMPanel';
-import DirectorPanel from './components/DirectorPanel';
-import { StateManagerPanel } from './components/StateManagerPanel';
-import { AnalyticsPanel } from './components/AnalyticsPanel';
+import RightPanel from './components/RightPanel';
 
 const W = 900, H = 600;
 
@@ -112,6 +109,42 @@ export default function App() {
   }, [config.agentCount]);
 
   useEffect(() => { init(); }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      switch (e.key.toLowerCase()) {
+        case ' ':
+          e.preventDefault();
+          setIsPaused(p => !p);
+          break;
+        case 'r':
+          if (!e.ctrlKey && !e.metaKey) {
+            init();
+          }
+          break;
+        case 's':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            // Save state (trigger save dialog)
+            const name = prompt('Enter state name:');
+            if (name) {
+              stateManagerRef.current.saveState(name, '', config, metrics);
+            }
+          }
+          break;
+        case 'escape':
+          // Could be used to close modals or deselect
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [config, metrics, init]);
 
   useEffect(() => {
     let frame: number;
@@ -287,80 +320,115 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#060a14] text-white">
       <header className="border-b border-gray-800/50 bg-gray-900/30 backdrop-blur-sm">
-        <div className="max-w-[1900px] mx-auto px-4 py-2.5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-purple-600 flex items-center justify-center">
-              <span className="text-sm">🧬</span>
+        <div className="max-w-[1900px] mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500 to-purple-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+              <span className="text-2xl">🧬</span>
             </div>
             <div>
-              <h1 className="text-base font-bold bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent">
                 Agent Swarm Intelligence
               </h1>
-              <p className="text-[9px] text-gray-500 -mt-0.5">Advanced Multi-Agent System • Neural • Evolutionary • Stigmergic</p>
+              <p className="text-sm text-gray-400 mt-0.5">Advanced Multi-Agent System • Neural • Evolutionary • Stigmergic</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 text-[10px] text-gray-500">
-            <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>Online</span>
-            <span>Gen: {metrics.generation}</span>
-            <span>Agents: {agents.length}</span>
-            <button onClick={() => setIsPaused(p => !p)}
-              className={`px-2 py-0.5 rounded text-[10px] font-medium ${isPaused ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'}`}>
-              {isPaused ? '▶' : '⏸'}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 text-sm text-gray-400">
+              <span className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+                Online
+              </span>
+              <span className="px-3 py-1 bg-gray-800/50 rounded-lg border border-gray-700/30">
+                Gen: <span className="font-mono font-bold text-cyan-400">{metrics.generation}</span>
+              </span>
+              <span className="px-3 py-1 bg-gray-800/50 rounded-lg border border-gray-700/30">
+                Agents: <span className="font-mono font-bold text-cyan-400">{agents.length}</span>
+              </span>
+            </div>
+            <button 
+              onClick={() => setIsPaused(p => !p)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                isPaused 
+                  ? 'bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30' 
+                  : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/30'
+              }`}
+              title={isPaused ? 'Resume (Space)' : 'Pause (Space)'}
+            >
+              {isPaused ? '▶ Resume' : '⏸ Pause'}
+            </button>
+            <button 
+              onClick={init}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-all"
+              title="Reset (R)"
+            >
+              ↻ Reset
             </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-[1900px] mx-auto p-3">
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_280px] gap-3">
+      <main className="max-w-[1900px] mx-auto p-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_320px] gap-6">
           {/* Left Panel */}
-          <div className="order-2 lg:order-1 space-y-3">
-            <div className="bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-xl p-3 space-y-3 overflow-y-auto max-h-[calc(100vh-100px)]">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-bold text-cyan-400 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>Controls
+          <div className="order-2 lg:order-1 space-y-4">
+            <div className="bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-xl p-5 space-y-5 overflow-y-auto max-h-[calc(100vh-120px)] custom-scrollbar">
+              <div className="flex items-center justify-between pb-3 border-b border-gray-700/50">
+                <h2 className="text-lg font-bold text-cyan-400 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+                  Controls
                 </h2>
-                <button onClick={init} className="px-2 py-0.5 rounded text-[10px] bg-red-500/20 text-red-400 border border-red-500/30">↻ Reset</button>
               </div>
 
               {/* Scenarios */}
-              <div className="space-y-1.5">
-                <div className="text-[9px] font-semibold text-gray-500 uppercase">🎬 Scenarios</div>
-                <div className="grid grid-cols-2 gap-1">
+              <div className="space-y-3">
+                <div className="text-sm font-semibold text-gray-400 uppercase tracking-wide">🎬 Scenarios</div>
+                <div className="grid grid-cols-2 gap-2">
                   {scenarios.map(s => (
                     <button key={s.id} onClick={() => loadScenario(s.id)} title={s.description}
-                      className="flex items-center gap-1 px-2 py-1 rounded text-[9px] bg-gray-800/50 border border-gray-700/30 text-gray-400 hover:bg-gray-800 hover:text-gray-300 transition-all">
-                      <span>{s.icon}</span><span className="truncate">{s.name}</span>
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-gray-800/50 border border-gray-700/30 text-gray-300 hover:bg-gray-800 hover:border-cyan-500/30 hover:text-cyan-400 transition-all">
+                      <span className="text-lg">{s.icon}</span>
+                      <span className="truncate font-medium">{s.name}</span>
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <div className="text-[9px] font-semibold text-gray-500 uppercase">Behavior</div>
+              <div className="space-y-3">
+                <div className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Behavior</div>
                 {behaviors.map(b => (
                   <button key={b.v} onClick={() => setConfig(c => ({ ...c, behavior: b.v as any }))}
-                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-[11px] ${
-                      config.behavior === b.v ? 'bg-cyan-500/20 border border-cyan-500/40 text-cyan-300' : 'bg-gray-800/50 border border-gray-700/30 text-gray-400 hover:bg-gray-800'
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left text-sm transition-all ${
+                      config.behavior === b.v 
+                        ? 'bg-cyan-500/20 border-2 border-cyan-500/40 text-cyan-300 shadow-lg shadow-cyan-500/10' 
+                        : 'bg-gray-800/50 border border-gray-700/30 text-gray-400 hover:bg-gray-800 hover:border-gray-600'
                     }`}>
-                    <span>{b.i}</span><span className="font-medium">{b.l}</span>
+                    <span className="text-xl">{b.i}</span>
+                    <span className="font-semibold">{b.l}</span>
                   </button>
                 ))}
               </div>
 
-              <div className="space-y-1.5">
-                <div className="text-[9px] font-semibold text-gray-500 uppercase">Agents ({config.agentCount})</div>
-                <div className="flex items-center gap-1.5">
-                  <button onClick={() => setConfig(c => ({ ...c, agentCount: Math.max(5, c.agentCount - 5) }))} className="px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700 text-xs">−</button>
+              <div className="space-y-3">
+                <div className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
+                  Agents <span className="text-cyan-400 font-mono">({config.agentCount})</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setConfig(c => ({ ...c, agentCount: Math.max(5, c.agentCount - 5) }))} 
+                    className="px-3 py-2 rounded-lg bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-700 text-base font-bold transition-all">
+                    −
+                  </button>
                   <input type="range" min="5" max="120" value={config.agentCount}
                     onChange={e => setConfig(c => ({ ...c, agentCount: +e.target.value }))}
-                    className="flex-1 h-1 bg-gray-700 rounded appearance-none accent-cyan-500" />
-                  <button onClick={() => setConfig(c => ({ ...c, agentCount: Math.min(120, c.agentCount + 5) }))} className="px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700 text-xs">+</button>
+                    className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none accent-cyan-500" />
+                  <button onClick={() => setConfig(c => ({ ...c, agentCount: Math.min(120, c.agentCount + 5) }))} 
+                    className="px-3 py-2 rounded-lg bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-700 text-base font-bold transition-all">
+                    +
+                  </button>
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <div className="text-[9px] font-semibold text-gray-500 uppercase">Flocking</div>
+              <div className="space-y-4">
+                <div className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Flocking Parameters</div>
                 <Slider l="Separation" v={config.separationWeight} min={0} max={5} step={0.1} onChange={v => setConfig(c => ({ ...c, separationWeight: v }))} />
                 <Slider l="Alignment" v={config.alignmentWeight} min={0} max={5} step={0.1} onChange={v => setConfig(c => ({ ...c, alignmentWeight: v }))} />
                 <Slider l="Cohesion" v={config.cohesionWeight} min={0} max={5} step={0.1} onChange={v => setConfig(c => ({ ...c, cohesionWeight: v }))} />
@@ -369,8 +437,8 @@ export default function App() {
                 <Slider l="Speed" v={config.maxSpeed} min={1} max={8} step={0.5} onChange={v => setConfig(c => ({ ...c, maxSpeed: v }))} />
               </div>
 
-              <div className="space-y-1.5">
-                <div className="text-[9px] font-semibold text-gray-500 uppercase">Advanced Systems</div>
+              <div className="space-y-3">
+                <div className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Advanced Systems</div>
                 <Toggle l="🧠 Neural Networks" v={config.neuralNetEnabled} onChange={v => setConfig(c => ({ ...c, neuralNetEnabled: v }))} />
                 <Toggle l="🧬 Evolution" v={config.evolutionEnabled} onChange={v => setConfig(c => ({ ...c, evolutionEnabled: v }))} />
                 <Toggle l="🐜 Pheromones" v={config.pheromoneEnabled} onChange={v => setConfig(c => ({ ...c, pheromoneEnabled: v }))} />
@@ -381,8 +449,8 @@ export default function App() {
                 <Toggle l="🧠 Q-Learning" v={config.qLearningEnabled} onChange={v => setConfig(c => ({ ...c, qLearningEnabled: v }))} />
               </div>
 
-              <div className="space-y-1.5">
-                <div className="text-[9px] font-semibold text-gray-500 uppercase">Visualization</div>
+              <div className="space-y-3">
+                <div className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Visualization</div>
                 <Toggle l="Trails" v={config.showTrails} onChange={v => setConfig(c => ({ ...c, showTrails: v }))} />
                 <Toggle l="Connections" v={config.showConnections} onChange={v => setConfig(c => ({ ...c, showConnections: v }))} />
                 <Toggle l="Perception" v={config.showPerception} onChange={v => setConfig(c => ({ ...c, showPerception: v }))} />
@@ -393,33 +461,74 @@ export default function App() {
               </div>
 
               {/* Recording */}
-              <div className="space-y-1.5">
-                <div className="text-[9px] font-semibold text-gray-500 uppercase">📹 Recording</div>
-                <div className="flex gap-1">
+              <div className="space-y-3 pt-4 border-t border-gray-700/50">
+                <div className="text-sm font-semibold text-gray-400 uppercase tracking-wide">📹 Recording</div>
+                <div className="flex gap-2">
                   {!recordingStats.isRecording ? (
-                    <button onClick={handleStartRecording} className="flex-1 px-2 py-1 rounded text-[9px] bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30">● Record</button>
+                    <button onClick={handleStartRecording} 
+                      className="flex-1 px-4 py-2 rounded-lg text-sm bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 font-medium transition-all">
+                      ● Record
+                    </button>
                   ) : (
-                    <button onClick={handleStopRecording} className="flex-1 px-2 py-1 rounded text-[9px] bg-gray-700 text-gray-300 border border-gray-600 hover:bg-gray-600">■ Stop</button>
+                    <button onClick={handleStopRecording} 
+                      className="flex-1 px-4 py-2 rounded-lg text-sm bg-gray-700 text-gray-300 border border-gray-600 hover:bg-gray-600 font-medium transition-all">
+                      ■ Stop
+                    </button>
                   )}
                 </div>
-                <div className="text-[8px] text-gray-500 text-center">
+                <div className="text-xs text-gray-500 text-center font-mono">
                   {recordingStats.frameCount} frames • {recordingStats.duration.toFixed(1)}s
+                </div>
+              </div>
+
+              {/* Keyboard Shortcuts Help */}
+              <div className="space-y-2 pt-4 border-t border-gray-700/50">
+                <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Keyboard Shortcuts</div>
+                <div className="space-y-1 text-xs text-gray-400">
+                  <div className="flex justify-between">
+                    <span>Pause/Resume</span>
+                    <kbd className="px-2 py-0.5 bg-gray-800 rounded border border-gray-700 font-mono text-xs">Space</kbd>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Reset</span>
+                    <kbd className="px-2 py-0.5 bg-gray-800 rounded border border-gray-700 font-mono text-xs">R</kbd>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Save State</span>
+                    <kbd className="px-2 py-0.5 bg-gray-800 rounded border border-gray-700 font-mono text-xs">Ctrl+S</kbd>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Center */}
-          <div className="order-1 lg:order-2 flex flex-col items-center gap-2">
+          <div className="order-1 lg:order-2 flex flex-col items-center gap-4">
             <canvas ref={canvasRef} width={W} height={H} onClick={handleCanvasClick}
-              className="w-full max-w-[900px] rounded-xl border border-gray-800/50 shadow-2xl cursor-crosshair"
+              className="w-full max-w-[900px] rounded-xl border-2 border-gray-800/50 shadow-2xl shadow-cyan-500/10 cursor-crosshair"
               style={{aspectRatio:`${W}/${H}`}} />
-            <div className="w-full max-w-[900px] bg-gray-900/60 border border-gray-700/30 rounded-lg px-3 py-1.5 flex items-center justify-between text-[9px] text-gray-500">
-              <span>💡 Click to {config.obstacleMode ? 'place threats' : config.constructionEnabled ? 'build structures' : 'add resources'}</span>
-              <span>🔄 {config.behavior.replace('_',' ')} | 🌍 {worldState.timeOfDay} | 🌤️ {worldState.weather}</span>
-              <span>⚡ {config.speed.toFixed(1)}x</span>
+            <div className="w-full max-w-[900px] bg-gray-900/60 border border-gray-700/30 rounded-lg px-4 py-3 flex items-center justify-between text-sm text-gray-400">
+              <span className="flex items-center gap-2">
+                <span className="text-lg">💡</span>
+                Click to {config.obstacleMode ? 'place threats' : config.constructionEnabled ? 'build structures' : 'add resources'}
+              </span>
+              <span className="flex items-center gap-3">
+                <span className="px-2 py-1 bg-gray-800/50 rounded border border-gray-700/30">
+                  🔄 {config.behavior.replace('_',' ')}
+                </span>
+                <span className="px-2 py-1 bg-gray-800/50 rounded border border-gray-700/30">
+                  🌍 {worldState.timeOfDay}
+                </span>
+                <span className="px-2 py-1 bg-gray-800/50 rounded border border-gray-700/30">
+                  🌤️ {worldState.weather}
+                </span>
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="text-lg">⚡</span>
+                <span className="font-mono font-bold text-cyan-400">{config.speed.toFixed(1)}x</span>
+              </span>
             </div>
-            <div className="w-full max-w-[900px] grid grid-cols-6 gap-1.5">
+            <div className="w-full max-w-[900px] grid grid-cols-6 gap-3">
               <Stat l="Speed" v={metrics.avgSpeed.toFixed(1)} c="cyan" />
               <Stat l="Coherence" v={`${(metrics.swarmCoherence*100).toFixed(0)}%`} c="green" />
               <Stat l="Messages" v={messageCount.toString()} c="yellow" />
@@ -429,7 +538,7 @@ export default function App() {
             </div>
 
             {/* Metrics Charts */}
-            <div className="w-full max-w-[900px] grid grid-cols-2 gap-2">
+            <div className="w-full max-w-[900px] grid grid-cols-2 gap-4">
               <Chart title="Speed" data={metricsHistory.speed} color="#06b6d4" />
               <Chart title="Coherence" data={metricsHistory.coherence} color="#10b981" />
               <Chart title="Energy" data={metricsHistory.energy} color="#f59e0b" />
@@ -437,182 +546,46 @@ export default function App() {
             </div>
           </div>
 
-          {/* Right Panel */}
-          <div className="order-3 space-y-3">
-            {/* Qwen Director Panel */}
-            <DirectorPanel
-              llmService={llmServiceRef.current}
-              getContext={() => metrics}
-              onExecuteAction={async (action: SwarmAction): Promise<ActionResult> => {
-                // Execute the action based on type
-                if (action.type === 'adjust_param' && action.param && action.value !== undefined) {
-                  setConfig(prev => ({ ...prev, [action.param!]: action.value }));
-                  return { action, success: true, message: `Adjusted ${action.param} to ${action.value}` };
-                }
-                if (action.type === 'set_behavior' && action.behavior) {
-                  setConfig(prev => ({ ...prev, behavior: action.behavior as any }));
-                  return { action, success: true, message: `Set behavior to ${action.behavior}` };
-                }
-                if (action.type === 'toggle_feature' && action.feature && action.enabled !== undefined) {
-                  setConfig(prev => ({ ...prev, [action.feature!]: action.enabled }));
-                  return { action, success: true, message: `Toggled ${action.feature} ${action.enabled ? 'on' : 'off'}` };
-                }
-                if (action.type === 'pause') {
-                  setIsPaused(true);
-                  return { action, success: true, message: 'Paused simulation' };
-                }
-                if (action.type === 'resume') {
-                  setIsPaused(false);
-                  return { action, success: true, message: 'Resumed simulation' };
-                }
-                return { action, success: false, message: 'Unknown action type' };
-              }}
-              currentParams={{
-                separationWeight: config.separationWeight,
-                alignmentWeight: config.alignmentWeight,
-                cohesionWeight: config.cohesionWeight,
-                explorationWeight: config.explorationWeight,
-                perceptionRadius: config.perceptionRadius,
-                maxSpeed: config.maxSpeed,
-              }}
-              currentFeatures={{
-                pheromoneEnabled: config.pheromoneEnabled,
-                neuralNetEnabled: config.neuralNetEnabled,
-                evolutionEnabled: config.evolutionEnabled,
-                memoryEnabled: config.memoryEnabled,
-                environmentEnabled: config.environmentEnabled,
-              }}
-            />
-
-            {/* Qwen Chat Panel */}
-            <LLMPanel
-              llmService={llmServiceRef.current}
-              getContext={() => metrics}
-            />
-
-            {/* State Manager Panel */}
-            <StateManagerPanel
-              stateManager={stateManagerRef.current}
-              currentConfig={config}
-              onLoadState={handleLoadState}
-              currentMetrics={metrics}
-            />
-
-            {/* Analytics Panel */}
-            <AnalyticsPanel analytics={analytics} />
-
-            {/* World Status */}
-            <div className="bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-xl p-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm">{worldState.timeOfDay === 'dawn' ? '🌅' : worldState.timeOfDay === 'day' ? '☀️' : worldState.timeOfDay === 'dusk' ? '🌆' : '🌙'}</span>
-                <h3 className="text-xs font-bold text-gray-300 uppercase">World Status</h3>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-[10px]">
-                <div className="bg-gray-800/50 rounded p-1.5">
-                  <div className="text-gray-500 text-[8px] uppercase">Time</div>
-                  <div className="font-mono font-bold text-yellow-400">{metrics.worldTime}</div>
-                  <div className="text-gray-400 capitalize">{worldState.timeOfDay}</div>
-                </div>
-                <div className="bg-gray-800/50 rounded p-1.5">
-                  <div className="text-gray-500 text-[8px] uppercase">Day</div>
-                  <div className="font-mono font-bold text-gray-300">{worldState.day}</div>
-                  <div className="text-gray-400">{worldState.season === 'spring' ? '🌸' : worldState.season === 'summer' ? '☀️' : worldState.season === 'autumn' ? '🍂' : '❄️'} {worldState.season}</div>
-                </div>
-                <div className="bg-gray-800/50 rounded p-1.5">
-                  <div className="text-gray-500 text-[8px] uppercase">Weather</div>
-                  <div className="text-gray-300">{worldState.weather === 'clear' ? '☀️' : worldState.weather === 'rain' ? '🌧️' : worldState.weather === 'storm' ? '⛈️' : worldState.weather === 'fog' ? '🌫️' : '💨'} {worldState.weather}</div>
-                </div>
-                <div className="bg-gray-800/50 rounded p-1.5">
-                  <div className="text-gray-500 text-[8px] uppercase">Temp</div>
-                  <div className={`font-mono font-bold ${worldState.temperature < 5 ? 'text-blue-400' : worldState.temperature > 30 ? 'text-red-400' : 'text-green-400'}`}>{worldState.temperature.toFixed(0)}°C</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Metrics */}
-            <div className="bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-xl p-3 space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
-                <h2 className="text-[10px] font-bold text-gray-300 uppercase">Metrics</h2>
-              </div>
-              <div className="grid grid-cols-2 gap-1.5">
-                <Card l="Speed" v={metrics.avgSpeed.toFixed(1)} c="cyan" p={metrics.avgSpeed/5} />
-                <Card l="Coherence" v={`${(metrics.swarmCoherence*100).toFixed(0)}%`} c="green" p={metrics.swarmCoherence} />
-                <Card l="Fitness" v={metrics.avgFitness.toFixed(0)} c="pink" p={metrics.avgFitness/100} />
-                <Card l="Links" v={metrics.activeConnections.toString()} c="yellow" p={Math.min(1,metrics.activeConnections/(agents.length*2))} />
-              </div>
-              <div className="grid grid-cols-3 gap-1 text-center">
-                <Mini l="Msgs" v={messageCount} c="text-cyan-400" />
-                <Mini l="Res" v={metrics.resourcesFound} c="text-yellow-400" />
-                <Mini l="Energy" v={metrics.avgEnergy.toFixed(0)} c="text-green-400" />
-              </div>
-
-              {/* Hive Mind Stats */}
-              {config.memoryEnabled && (
-                <div className="bg-purple-500/10 rounded p-1.5 border border-purple-500/30">
-                  <div className="text-[8px] text-purple-400 uppercase mb-0.5">🧠 Hive Mind</div>
-                  <div className="flex justify-between text-[9px]">
-                    <span className="text-gray-400">Known Locations:</span>
-                    <span className="text-purple-400 font-mono">{hiveStats.knownLocations.length}</span>
-                  </div>
-                  <div className="flex justify-between text-[9px]">
-                    <span className="text-gray-400">Decisions:</span>
-                    <span className="text-cyan-400 font-mono">{hiveStats.decisionCount}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Construction Stats */}
-              {config.constructionEnabled && structures.length > 0 && (
-                <div className="bg-orange-500/10 rounded p-1.5 border border-orange-500/30">
-                  <div className="text-[8px] text-orange-400 uppercase mb-0.5">🏗️ Construction</div>
-                  <div className="flex justify-between text-[9px]">
-                    <span className="text-gray-400">Completed/Total:</span>
-                    <span className="text-orange-400 font-mono">{structures.filter(s => s.completed).length}/{structures.length}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Threat Stats */}
-              {threats.length > 0 && (
-                <div className="bg-red-500/10 rounded p-1.5 border border-red-500/30">
-                  <div className="text-[8px] text-red-400 uppercase mb-0.5">⚠️ Threats</div>
-                  <div className="flex justify-between text-[9px]">
-                    <span className="text-gray-400">Active:</span>
-                    <span className="text-red-400 font-mono">{threats.length}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Event Log */}
-            <div className="bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-xl p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></span>
-                  <h3 className="text-xs font-bold text-gray-300 uppercase">Event Log</h3>
-                </div>
-                <span className="text-[10px] text-gray-500 font-mono">{metrics.eventRate.toFixed(1)} evt/s</span>
-              </div>
-              <div className="space-y-1 max-h-[200px] overflow-y-auto pr-1">
-                {events.slice(0, 15).map((event) => (
-                  <div key={event.id} className={`flex items-start gap-1.5 px-2 py-1 rounded border text-[10px] ${
-                    event.severity === 'info' ? 'text-blue-400 bg-blue-500/10 border-blue-500/20' :
-                    event.severity === 'warning' ? 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20' :
-                    event.severity === 'critical' ? 'text-red-400 bg-red-500/10 border-red-500/20' :
-                    'text-green-400 bg-green-500/10 border-green-500/20'
-                  }`}>
-                    <span className="flex-shrink-0">{event.type === 'discovery' ? '🔍' : event.type === 'scenario' ? '🎬' : event.type === 'threat' ? '⚠️' : event.type === 'construction' ? '🏗️' : '📋'}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="truncate">{event.description}</div>
-                      <div className="text-[9px] opacity-50">{new Date(event.timestamp).toLocaleTimeString()}</div>
-                    </div>
-                  </div>
-                ))}
-                {events.length === 0 && <div className="text-[10px] text-gray-600 text-center py-4">Waiting for events...</div>}
-              </div>
-            </div>
-          </div>
+          {/* Right Panel - Tabbed Interface */}
+          <RightPanel
+            config={config}
+            setConfig={setConfig}
+            metrics={metrics}
+            llmService={llmServiceRef.current}
+            stateManager={stateManagerRef.current}
+            analyticsEngine={analyticsEngineRef.current}
+            onExecuteAction={async (action: SwarmAction): Promise<ActionResult> => {
+              // Execute the action based on type
+              if (action.type === 'adjust_param' && action.param && action.value !== undefined) {
+                setConfig(prev => ({ ...prev, [action.param!]: action.value }));
+                return { action, success: true, message: `Adjusted ${action.param} to ${action.value}` };
+              }
+              if (action.type === 'set_behavior' && action.behavior) {
+                setConfig(prev => ({ ...prev, behavior: action.behavior as any }));
+                return { action, success: true, message: `Set behavior to ${action.behavior}` };
+              }
+              if (action.type === 'toggle_feature' && action.feature && action.enabled !== undefined) {
+                setConfig(prev => ({ ...prev, [action.feature!]: action.enabled }));
+                return { action, success: true, message: `Toggled ${action.feature} ${action.enabled ? 'on' : 'off'}` };
+              }
+              if (action.type === 'pause') {
+                setIsPaused(true);
+                return { action, success: true, message: 'Paused simulation' };
+              }
+              if (action.type === 'resume') {
+                setIsPaused(false);
+                return { action, success: true, message: 'Resumed simulation' };
+              }
+              return { action, success: false, message: 'Unknown action type' };
+            }}
+            worldState={worldState}
+            hiveStats={hiveStats}
+            structures={structures}
+            threats={threats}
+            events={events}
+            isPaused={isPaused}
+            setIsPaused={setIsPaused}
+          />
         </div>
       </main>
     </div>
@@ -621,22 +594,22 @@ export default function App() {
 
 function Slider({l,v,min,max,step,onChange}:{l:string;v:number;min:number;max:number;step:number;onChange:(v:number)=>void}) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-[9px] text-gray-500 w-16">{l}</span>
+    <div className="flex items-center gap-3">
+      <span className="text-sm text-gray-400 w-20">{l}</span>
       <input type="range" min={min} max={max} step={step} value={v} onChange={e=>onChange(+e.target.value)}
-        className="flex-1 h-1 bg-gray-700 rounded appearance-none accent-cyan-500" />
-      <span className="text-[9px] text-gray-400 font-mono w-8 text-right">{v.toFixed(1)}</span>
+        className="flex-1 h-2 bg-gray-700 rounded appearance-none accent-cyan-500" />
+      <span className="text-sm text-gray-300 font-mono w-12 text-right">{v.toFixed(1)}</span>
     </div>
   );
 }
 
 function Toggle({l,v,onChange}:{l:string;v:boolean;onChange:(v:boolean)=>void}) {
   return (
-    <div className="flex items-center justify-between py-0.5 cursor-pointer" onClick={()=>onChange(!v)}>
-      <span className="text-[10px] text-gray-400">{l}</span>
-      <div className={`w-7 h-3.5 rounded-full transition-all relative ${v?'bg-cyan-500/40':'bg-gray-700'}`}>
-        <div className={`absolute top-0.5 w-2.5 h-2.5 rounded-full transition-all ${v?'bg-cyan-400':'bg-gray-500'}`}
-          style={{left:v?'15px':'2px'}} />
+    <div className="flex items-center justify-between py-1 cursor-pointer hover:bg-gray-800/30 rounded px-2 transition-colors" onClick={()=>onChange(!v)}>
+      <span className="text-sm text-gray-300">{l}</span>
+      <div className={`w-10 h-5 rounded-full transition-all relative ${v?'bg-cyan-500/60':'bg-gray-700'}`}>
+        <div className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${v?'bg-cyan-400':'bg-gray-500'}`}
+          style={{left:v?'22px':'2px'}} />
       </div>
     </div>
   );
@@ -652,9 +625,9 @@ function Stat({l,v,c}:{l:string;v:string;c:string}) {
     orange:'text-orange-400 border-orange-500/20 bg-orange-500/5',
   };
   return (
-    <div className={`rounded-lg px-2 py-1.5 border ${m[c]||m.cyan}`}>
-      <div className="text-[8px] text-gray-500 uppercase">{l}</div>
-      <div className={`text-xs font-mono font-bold ${m[c]?.split(' ')[0]}`}>{v}</div>
+    <div className={`rounded-lg px-3 py-2 border ${m[c]||m.cyan}`}>
+      <div className="text-xs text-gray-400 uppercase mb-1">{l}</div>
+      <div className={`text-lg font-mono font-bold ${m[c]?.split(' ')[0]}`}>{v}</div>
     </div>
   );
 }
@@ -668,11 +641,11 @@ function Card({l,v,c,p}:{l:string;v:string;c:string;p:number}) {
   };
   const cc = m[c]||m.cyan;
   return (
-    <div className={`${cc.bg} rounded p-1.5 border border-gray-700/30`}>
-      <div className="text-[8px] text-gray-500">{l}</div>
-      <div className={`text-[11px] font-mono font-bold ${cc.t}`}>{v}</div>
-      <div className="h-0.5 bg-gray-800 rounded-full mt-0.5 overflow-hidden">
-        <div className={`h-full ${cc.b} rounded-full`} style={{width:`${Math.min(100,p*100)}%`}} />
+    <div className={`${cc.bg} rounded-lg p-3 border border-gray-700/30`}>
+      <div className="text-xs text-gray-400 uppercase mb-1">{l}</div>
+      <div className={`text-xl font-mono font-bold ${cc.t}`}>{v}</div>
+      <div className="h-1 bg-gray-800 rounded-full mt-2 overflow-hidden">
+        <div className={`h-full ${cc.b} rounded-full transition-all`} style={{width:`${Math.min(100,p*100)}%`}} />
       </div>
     </div>
   );
@@ -680,9 +653,9 @@ function Card({l,v,c,p}:{l:string;v:string;c:string;p:number}) {
 
 function Mini({l,v,c}:{l:string;v:number|string;c:string}) {
   return (
-    <div className="bg-gray-800/50 rounded p-1">
-      <div className="text-[7px] text-gray-500 uppercase">{l}</div>
-      <div className={`text-[10px] font-mono ${c}`}>{v}</div>
+    <div className="bg-gray-800/50 rounded-lg p-2">
+      <div className="text-xs text-gray-400 uppercase mb-1">{l}</div>
+      <div className={`text-base font-mono font-bold ${c}`}>{v}</div>
     </div>
   );
 }
@@ -692,17 +665,17 @@ function Chart({title,data,color}:{title:string;data:number[];color:string}) {
   const max = Math.max(...data, 1);
   const min = Math.min(...data, 0);
   const range = max - min || 1;
-  const h = 50;
-  const w = 200;
+  const h = 80;
+  const w = 400;
   const points = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * h}`).join(' ');
   return (
-    <div className="bg-gray-900/60 border border-gray-700/30 rounded-lg p-2">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-[9px] text-gray-400 uppercase font-semibold">{title}</span>
-        <span className="text-[9px] font-mono" style={{color}}>{data[data.length-1].toFixed(1)}</span>
+    <div className="bg-gray-900/60 border border-gray-700/30 rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-sm text-gray-400 uppercase font-semibold tracking-wide">{title}</span>
+        <span className="text-lg font-mono font-bold" style={{color}}>{data[data.length-1].toFixed(1)}</span>
       </div>
       <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
-        <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" />
+        <polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </div>
   );
