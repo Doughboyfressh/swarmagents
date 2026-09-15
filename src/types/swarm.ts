@@ -20,6 +20,8 @@ export interface Agent {
   age: number;
   traits: AgentTraits;
   subSwarmId: number;
+  brain: NeuralNet;
+  memory: AgentMemory;
 }
 
 export type AgentRole = 'explorer' | 'worker' | 'coordinator' | 'scout' | 'carrier';
@@ -52,14 +54,20 @@ export interface SwarmConfig {
   showSubSwarms: boolean;
   obstacleMode: boolean;
   pheromoneEnabled: boolean;
+  pheromoneDecay: number;
+  pheromoneDiffusion: number;
   neuralNetEnabled: boolean;
   evolutionEnabled: boolean;
+  evolutionRate: number;
   memoryEnabled: boolean;
   environmentEnabled: boolean;
+  windStrength: number;
+  windDirection: number;
   showHeatmap: boolean;
   showFlowField: boolean;
   lifecycleEnabled: boolean;
   constructionEnabled: boolean;
+  qLearningEnabled: boolean;
 }
 
 export type SwarmBehavior =
@@ -85,6 +93,7 @@ export interface SwarmMetrics {
   threatsActive: number;
   worldTime: string;
   worldWeather: string;
+  qLearningStats: { avgQValue: number; explorationRate: number; agentsTrained: number };
 }
 
 export interface AgentTraits {
@@ -144,15 +153,17 @@ export interface WorldState {
   threatLevel: number;
 }
 
-export interface AgentBiography {
-  id: string;
-  role: string;
-  birthTime: number;
-  achievements: number;
-  resourcesCollected: number;
-  distanceTraveled: number;
-  threatsAvoided: number;
-  messagesSent: number;
+export interface NeuralNet {
+  weights1: number[][];
+  weights2: number[][];
+  bias1: number[];
+  bias2: number[];
+}
+
+export interface AgentMemory {
+  knownResources: { position: Vector2D; timestamp: number; quality: number }[];
+  knownDangers: { position: Vector2D; timestamp: number }[];
+  visitedLocations: { position: Vector2D; timestamp: number }[];
 }
 
 export interface HiveMemory {
@@ -167,4 +178,19 @@ export interface Scenario {
   icon: string;
   description: string;
   config: Partial<SwarmConfig>;
+}
+
+export interface Particle {
+  position: Vector2D;
+  velocity: Vector2D;
+  life: number;
+  maxLife: number;
+  color: string;
+  size: number;
+}
+
+export interface RecordingFrame {
+  timestamp: number;
+  agents: { id: string; position: Vector2D; velocity: Vector2D; energy: number; state: string }[];
+  resources: { id: string; position: Vector2D; amount: number; discovered: boolean }[];
 }

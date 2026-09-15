@@ -1,4 +1,4 @@
-import { Agent, Vector2D, Resource, SwarmConfig, SwarmMetrics, AgentTraits, Structure, Threat, WorldState, AgentBiography, HiveMemory, SubSwarm, SwarmEvent, Scenario } from '../types/swarm';
+import { Agent, Vector2D, Resource, SwarmConfig, SwarmMetrics, AgentTraits, Structure, Threat, WorldState, HiveMemory, Particle, RecordingFrame, NeuralNet, AgentMemory } from '../types/swarm';
 
 // Vector math
 export const add = (v1: Vector2D, v2: Vector2D): Vector2D => ({ x: v1.x + v2.x, y: v1.y + v2.y });
@@ -11,11 +11,40 @@ export const limit = (v: Vector2D, max: number): Vector2D => mag(v) > max ? mul(
 export const dist = (v1: Vector2D, v2: Vector2D): number => mag(sub(v1, v2));
 export const random2D = (): Vector2D => { const a = Math.random() * Math.PI * 2; return { x: Math.cos(a), y: Math.sin(a) }; };
 
+// Neural Network
+export const createNeuralNet = (): NeuralNet => ({
+  weights1: Array.from({ length: 8 }, () => Array.from({ length: 6 }, () => Math.random() * 2 - 1)),
+  weights2: Array.from({ length: 4 }, () => Array.from({ length: 8 }, () => Math.random() * 2 - 1)),
+  bias1: Array.from({ length: 8 }, () => Math.random() * 2 - 1),
+  bias2: Array.from({ length: 4 }, () => Math.random() * 2 - 1),
+});
+
+export const forwardPass = (net: NeuralNet, inputs: number[]): number[] => {
+  const hidden = net.bias1.map((bias, i) => {
+    const sum = inputs.reduce((acc, input, j) => acc + input * net.weights1[i][j], bias);
+    return Math.tanh(sum);
+  });
+  return net.bias2.map((bias, i) => {
+    const sum = hidden.reduce((acc, h, j) => acc + h * net.weights2[i][j], bias);
+    return Math.tanh(sum);
+  });
+};
+
+export const getNeuralInputs = (distToTarget: number, angleToTarget: number, energy: number, neighborCount: number, pheromoneStrength: number, speed: number): number[] => [
+  distToTarget / 500, angleToTarget / Math.PI, energy / 100, neighborCount / 10, pheromoneStrength, speed / 5,
+];
+
+// Traits & Memory
 export const randomTraits = (): AgentTraits => ({
   curiosity: Math.random(), sociability: Math.random(), aggression: Math.random(),
   caution: Math.random(), efficiency: 0.5 + Math.random() * 0.5,
 });
 
+export const createEmptyMemory = (): AgentMemory => ({
+  knownResources: [], knownDangers: [], visitedLocations: [],
+});
+
+// Agent creation
 export const createAgent = (id: string, x: number, y: number, role: Agent['role']): Agent => {
   const colors: Record<Agent['role'], string> = {
     explorer: '#00d4ff', worker: '#00ff88', coordinator: '#ff6b00', scout: '#ff0066', carrier: '#aa66ff',
@@ -25,7 +54,8 @@ export const createAgent = (id: string, x: number, y: number, role: Agent['role'
     acceleration: { x: 0, y: 0 }, maxSpeed: 2 + Math.random() * 1.5, maxForce: 0.1 + Math.random() * 0.05,
     radius: 6, role, state: 'moving', energy: 80 + Math.random() * 20, connections: [],
     perceptionRadius: 80 + Math.random() * 40, trail: [], color: colors[role],
-    pulsePhase: Math.random() * Math.PI * 2, fitness: 0, age: 0, traits: randomTraits(), subSwarmId: -1,
+    pulsePhase: Math.random() * Math.PI * 2, fitness: 0, age: 0, traits: randomTraits(),
+    subSwarmId: -1, brain: createNeuralNet(), memory: createEmptyMemory(),
   };
 };
 
@@ -152,6 +182,18 @@ const getBehaviorForce = (agent: Agent, neighbors: Agent[], resources: Resource[
         force = add(force, mag(flee) > 0 ? flee : mul(cohesion(agent, neighbors, config), 1.5));
       }
       break;
+    case 'neural_evolution': {
+      const nearestRes = resources.filter(r => r.amount > 0).reduce((c, r) => dist(agent.position, r.position) < dist(agent.position, c.position) ? r : c, resources[0]);
+      const targetDist = nearestRes ? dist(agent.position, nearestRes.position) : 250;
+      const targetAngle = nearestRes ? Math.atan2(nearestRes.position.y - agent.position.y, nearestRes.position.x - agent.position.x) : 0;
+      const inputs = getNeuralInputs(targetDist, targetAngle, agent.energy, neighbors.length, 0, mag(agent.velocity));
+      const output = forwardPass(agent.brain, inputs);
+      const steerForce: Vector2D = { x: output[0] * agent.maxForce * 2, y: output[1] * agent.maxForce * 2 };
+      const exploreBias = (output[2] + 1) / 2;
+      const wanderForce = mul(wander(agent, time), exploreBias * 0.5);
+      force = add(force, add(steerForce, wanderForce));
+      break;
+    }
     case 'stigmergy':
       force = add(force, mul(wander(agent, time), config.explorationWeight * 1.5));
       break;
@@ -198,7 +240,7 @@ export const establishConnections = (agents: Agent[], config: SwarmConfig): numb
 
 export const calculateMetrics = (agents: Agent[], resources: Resource[], connectionCount: number): SwarmMetrics => {
   if (agents.length === 0) {
-    return { avgSpeed: 0, avgEnergy: 0, totalMessages: 0, resourcesFound: 0, tasksCompleted: 0, swarmCoherence: 0, coverageArea: 0, activeConnections: 0, avgFitness: 0, generation: 0, subSwarmCount: 0, eventRate: 0, hiveMemorySize: 0, structuresBuilt: 0, threatsActive: 0, worldTime: '12:00', worldWeather: 'clear' };
+    return { avgSpeed: 0, avgEnergy: 0, totalMessages: 0, resourcesFound: 0, tasksCompleted: 0, swarmCoherence: 0, coverageArea: 0, activeConnections: 0, avgFitness: 0, generation: 0, subSwarmCount: 0, eventRate: 0, hiveMemorySize: 0, structuresBuilt: 0, threatsActive: 0, worldTime: '12:00', worldWeather: 'clear', qLearningStats: { avgQValue: 0, explorationRate: 0, agentsTrained: 0 } };
   }
   const avgSpeed = agents.reduce((s, a) => s + mag(a.velocity), 0) / agents.length;
   const avgEnergy = agents.reduce((s, a) => s + a.energy, 0) / agents.length;
@@ -214,6 +256,7 @@ export const calculateMetrics = (agents: Agent[], resources: Resource[], connect
     tasksCompleted: resources.filter(r => r.amount <= 0).length,
     swarmCoherence, coverageArea, activeConnections: connectionCount,
     avgFitness, generation: 0, subSwarmCount: 0, eventRate: 0, hiveMemorySize: 0, structuresBuilt: 0, threatsActive: 0, worldTime: '12:00', worldWeather: 'clear',
+    qLearningStats: { avgQValue: 0, explorationRate: 0, agentsTrained: 0 },
   };
 };
 
@@ -274,60 +317,98 @@ export class WorldSimulation {
   getTimeString(): string { const h = Math.floor(this.state.time); const m = Math.floor((this.state.time % 1) * 60); return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`; }
 }
 
-// Biography System
-export class BiographySystem {
-  private biographies: Map<string, AgentBiography> = new Map();
-  
-  create(agent: Agent): void {
-    this.biographies.set(agent.id, { id: agent.id, role: agent.role, birthTime: Date.now(), achievements: 0, resourcesCollected: 0, distanceTraveled: 0, threatsAvoided: 0, messagesSent: 0 });
-  }
-  
-  update(agent: Agent, prevPos: Vector2D): void {
-    const bio = this.biographies.get(agent.id);
-    if (!bio) return;
-    bio.distanceTraveled += dist(agent.position, prevPos);
-    if (agent.state === 'working') bio.resourcesCollected += 0.1;
-    if (agent.state === 'communicating') bio.messagesSent++;
-    if (agent.state === 'alert') bio.achievements++;
-  }
-  
-  getTopPerformers(metric: keyof AgentBiography, count = 5): AgentBiography[] {
-    return Array.from(this.biographies.values()).sort((a, b) => Number(b[metric]) - Number(a[metric])).slice(0, count);
-  }
-  
-  getSummary(): { total: number; avgResources: number; avgDistance: number } {
-    const bios = Array.from(this.biographies.values());
-    return { total: bios.length, avgResources: bios.reduce((s, b) => s + b.resourcesCollected, 0) / bios.length, avgDistance: bios.reduce((s, b) => s + b.distanceTraveled, 0) / bios.length };
-  }
-}
-
 // Event Log
 export class EventLog {
-  private events: SwarmEvent[] = [];
+  private events: any[] = [];
   private counter = 0;
   
-  add(type: string, description: string, severity: SwarmEvent['severity'] = 'info', agentId?: string, position?: Vector2D): void {
+  add(type: string, description: string, severity: 'info' | 'warning' | 'critical' | 'success' = 'info', agentId?: string, position?: Vector2D): void {
     this.events.unshift({ id: `evt-${this.counter++}`, timestamp: Date.now(), type, description, severity, agentId, position });
     if (this.events.length > 100) this.events = this.events.slice(0, 100);
   }
   
-  getEvents(): SwarmEvent[] { return this.events; }
+  getEvents(): any[] { return this.events; }
   getRate(): number { const now = Date.now(); return this.events.filter(e => now - e.timestamp < 5000).length / 5; }
   clear(): void { this.events = []; }
 }
 
+// Particle System
+export class ParticleSystem {
+  private particles: Particle[] = [];
+  
+  emit(position: Vector2D, count: number, color: string, speed = 2, life = 30): void {
+    for (let i = 0; i < count; i++) {
+      if (this.particles.length >= 500) break;
+      const angle = Math.random() * Math.PI * 2;
+      const spd = Math.random() * speed;
+      this.particles.push({
+        position: { ...position },
+        velocity: { x: Math.cos(angle) * spd, y: Math.sin(angle) * spd },
+        life, maxLife: life, color, size: 1 + Math.random() * 2,
+      });
+    }
+  }
+  
+  update(): void {
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.position.x += p.velocity.x;
+      p.position.y += p.velocity.y;
+      p.velocity.x *= 0.95;
+      p.velocity.y *= 0.95;
+      p.life--;
+      if (p.life <= 0) this.particles.splice(i, 1);
+    }
+  }
+  
+  getParticles(): Particle[] { return this.particles; }
+  clear(): void { this.particles = []; }
+}
+
+// Recording System
+export class RecordingSystem {
+  private frames: RecordingFrame[] = [];
+  private isRecording = false;
+  private lastFrameTime = 0;
+  
+  startRecording(): void { this.frames = []; this.isRecording = true; }
+  stopRecording(): void { this.isRecording = false; }
+  
+  recordFrame(agents: Agent[], resources: Resource[]): void {
+    if (!this.isRecording) return;
+    const now = Date.now();
+    if (now - this.lastFrameTime < 100) return;
+    this.lastFrameTime = now;
+    
+    this.frames.push({
+      timestamp: now,
+      agents: agents.map(a => ({ id: a.id, position: { ...a.position }, velocity: { ...a.velocity }, energy: a.energy, state: a.state })),
+      resources: resources.map(r => ({ id: r.id, position: { ...r.position }, amount: r.amount, discovered: r.discovered })),
+    });
+    
+    if (this.frames.length > 1000) this.frames.shift();
+  }
+  
+  getStats(): { isRecording: boolean; frameCount: number; duration: number } {
+    const duration = this.frames.length > 0 ? (this.frames[this.frames.length - 1].timestamp - this.frames[0].timestamp) / 1000 : 0;
+    return { isRecording: this.isRecording, frameCount: this.frames.length, duration };
+  }
+  
+  clear(): void { this.frames = []; this.isRecording = false; }
+}
+
 // Scenarios
-export const scenarios: Scenario[] = [
-  { id: 'flocking', name: 'Basic Flocking', icon: '🐦', description: 'Classic boids', config: { behavior: 'flocking', agentCount: 50, separationWeight: 1.5, alignmentWeight: 1, cohesionWeight: 1 } },
-  { id: 'resource', name: 'Resource Rush', icon: '⛏️', description: 'Gather resources', config: { behavior: 'resource_gathering', agentCount: 40, explorationWeight: 1.5 } },
-  { id: 'neural', name: 'Neural Evo', icon: '🧬', description: 'Evolving networks', config: { behavior: 'neural_evolution', agentCount: 60, neuralNetEnabled: true, evolutionEnabled: true } },
-  { id: 'ant', name: 'Ant Colony', icon: '🐜', description: 'Pheromone trails', config: { behavior: 'stigmergy', agentCount: 80, pheromoneEnabled: true, showHeatmap: true } },
-  { id: 'predator', name: 'Predator/Prey', icon: '🐺', description: 'Chase dynamics', config: { behavior: 'predator_prey', agentCount: 50 } },
-  { id: 'formation', name: 'V-Formation', icon: '✈️', description: 'Formation flight', config: { behavior: 'formation', agentCount: 30 } },
-  { id: 'rescue', name: 'Search & Rescue', icon: '🔍', description: 'Find targets', config: { behavior: 'search_rescue', agentCount: 45, explorationWeight: 2 } },
-  { id: 'windy', name: 'Windy Env', icon: '🌊', description: 'Weather effects', config: { behavior: 'flocking', agentCount: 40, environmentEnabled: true, showFlowField: true } },
-  { id: 'consensus', name: 'Consensus', icon: '🤝', description: 'Collective decision', config: { behavior: 'consensus', agentCount: 60, cohesionWeight: 2.5 } },
-  { id: 'ecosystem', name: 'Ecosystem', icon: '🌱', description: 'Birth/death cycle', config: { behavior: 'resource_gathering', agentCount: 30, lifecycleEnabled: true } },
-  { id: 'patrol', name: 'Grid Patrol', icon: '🛡️', description: 'Area coverage', config: { behavior: 'patrol', agentCount: 36 } },
-  { id: 'mega', name: 'Mega Swarm', icon: '🌌', description: 'Large scale', config: { behavior: 'flocking', agentCount: 120, perceptionRadius: 60 } },
+export const scenarios = [
+  { id: 'flocking', name: 'Basic Flocking', icon: '🐦', description: 'Classic boids', config: { behavior: 'flocking' as const, agentCount: 50, separationWeight: 1.5, alignmentWeight: 1, cohesionWeight: 1 } },
+  { id: 'resource', name: 'Resource Rush', icon: '⛏️', description: 'Gather resources', config: { behavior: 'resource_gathering' as const, agentCount: 40, explorationWeight: 1.5 } },
+  { id: 'neural', name: 'Neural Evo', icon: '🧬', description: 'Evolving networks', config: { behavior: 'neural_evolution' as const, agentCount: 60, neuralNetEnabled: true, evolutionEnabled: true } },
+  { id: 'ant', name: 'Ant Colony', icon: '🐜', description: 'Pheromone trails', config: { behavior: 'stigmergy' as const, agentCount: 80, pheromoneEnabled: true, showHeatmap: true } },
+  { id: 'predator', name: 'Predator/Prey', icon: '🐺', description: 'Chase dynamics', config: { behavior: 'predator_prey' as const, agentCount: 50 } },
+  { id: 'formation', name: 'V-Formation', icon: '✈️', description: 'Formation flight', config: { behavior: 'formation' as const, agentCount: 30 } },
+  { id: 'rescue', name: 'Search & Rescue', icon: '🔍', description: 'Find targets', config: { behavior: 'search_rescue' as const, agentCount: 45, explorationWeight: 2 } },
+  { id: 'windy', name: 'Windy Env', icon: '🌊', description: 'Weather effects', config: { behavior: 'flocking' as const, agentCount: 40, environmentEnabled: true, showFlowField: true } },
+  { id: 'consensus', name: 'Consensus', icon: '🤝', description: 'Collective decision', config: { behavior: 'consensus' as const, agentCount: 60, cohesionWeight: 2.5 } },
+  { id: 'ecosystem', name: 'Ecosystem', icon: '🌱', description: 'Birth/death cycle', config: { behavior: 'resource_gathering' as const, agentCount: 30, lifecycleEnabled: true } },
+  { id: 'patrol', name: 'Grid Patrol', icon: '🛡️', description: 'Area coverage', config: { behavior: 'patrol' as const, agentCount: 36 } },
+  { id: 'mega', name: 'Mega Swarm', icon: '🌌', description: 'Large scale', config: { behavior: 'flocking' as const, agentCount: 120, perceptionRadius: 60 } },
 ];

@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Agent, Resource, SwarmConfig, SwarmMetrics, Vector2D, SwarmEvent } from './types/swarm';
-import { createAgent, createResource, establishConnections, calculateMetrics, updateAgent, dist, mag, HiveMind, WorldSimulation, BiographySystem, EventLog, scenarios } from './utils/swarmEngine';
-import { LLMService } from './utils/llmService';
+import { Agent, Resource, SwarmConfig, SwarmMetrics, Vector2D, SwarmEvent, Structure, Threat } from './types/swarm';
+import { createAgent, createResource, establishConnections, calculateMetrics, updateAgent, dist, mag, HiveMind, WorldSimulation, EventLog, ParticleSystem, RecordingSystem, scenarios } from './utils/swarmEngine';
 
 const W = 900, H = 600;
 
@@ -11,41 +10,54 @@ const defaultConfig: SwarmConfig = {
   explorationWeight: 0.5, communicationRange: 120, maxSpeed: 3,
   behavior: 'flocking', showTrails: true, showConnections: true,
   showPerception: false, speed: 1, showSubSwarms: true, obstacleMode: false,
-  pheromoneEnabled: false, neuralNetEnabled: false, evolutionEnabled: false,
-  memoryEnabled: true, environmentEnabled: false, showHeatmap: false,
-  showFlowField: false, lifecycleEnabled: false, constructionEnabled: false,
+  pheromoneEnabled: false, pheromoneDecay: 0.005, pheromoneDiffusion: 0.01,
+  neuralNetEnabled: false, evolutionEnabled: false, evolutionRate: 0.05,
+  memoryEnabled: true, environmentEnabled: false, windStrength: 0.5, windDirection: 0,
+  showHeatmap: false, showFlowField: false, lifecycleEnabled: false,
+  constructionEnabled: false, qLearningEnabled: false,
 };
 
 export default function App() {
   const [config, setConfig] = useState<SwarmConfig>(defaultConfig);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [resources, setResources] = useState<Resource[]>([]);
+  const [structures, setStructures] = useState<Structure[]>([]);
+  const [threats, setThreats] = useState<Threat[]>([]);
   const [metrics, setMetrics] = useState<SwarmMetrics>({
     avgSpeed: 0, avgEnergy: 0, totalMessages: 0, resourcesFound: 0,
     tasksCompleted: 0, swarmCoherence: 0, coverageArea: 0, activeConnections: 0,
     avgFitness: 0, generation: 0, subSwarmCount: 0, eventRate: 0,
     hiveMemorySize: 0, structuresBuilt: 0, threatsActive: 0, worldTime: '12:00', worldWeather: 'clear',
+    qLearningStats: { avgQValue: 0, explorationRate: 0, agentsTrained: 0 },
   });
   const [isPaused, setIsPaused] = useState(false);
   const [messageCount, setMessageCount] = useState(0);
   const [events, setEvents] = useState<SwarmEvent[]>([]);
   const [worldState, setWorldState] = useState<{ time: number; timeOfDay: 'dawn' | 'day' | 'dusk' | 'night'; day: number; season: 'spring' | 'summer' | 'autumn' | 'winter'; weather: 'clear' | 'rain' | 'storm' | 'fog' | 'wind'; temperature: number; visibility: number; resourceAbundance: number; threatLevel: number }>({ time: 8, timeOfDay: 'day', day: 1, season: 'spring', weather: 'clear', temperature: 20, visibility: 1, resourceAbundance: 1, threatLevel: 0.2 });
   const [hiveStats, setHiveStats] = useState({ knownLocations: [] as any[], decisionCount: 0, goalProgress: 0 });
-  const [bioSummary, setBioSummary] = useState({ total: 0, avgResources: 0, avgDistance: 0 });
   const [metricsHistory, setMetricsHistory] = useState({ speed: [] as number[], coherence: [] as number[], energy: [] as number[], connections: [] as number[] });
+  const [isDirectorMode, setIsDirectorMode] = useState(false);
+  const [directorGoal, setDirectorGoal] = useState('');
+  const [actionLog, setActionLog] = useState<any[]>([]);
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isLLMProcessing, setIsLLMProcessing] = useState(false);
+  const [recordingStats, setRecordingStats] = useState({ isRecording: false, frameCount: 0, duration: 0 });
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const agentsRef = useRef<Agent[]>([]);
   const resourcesRef = useRef<Resource[]>([]);
+  const structuresRef = useRef<Structure[]>([]);
+  const threatsRef = useRef<Threat[]>([]);
   const configRef = useRef(config);
   const pausedRef = useRef(isPaused);
   const msgCountRef = useRef(0);
   const timeRef = useRef(0);
   const hiveMindRef = useRef(new HiveMind());
   const worldSimRef = useRef(new WorldSimulation());
-  const bioSystemRef = useRef(new BiographySystem());
   const eventLogRef = useRef(new EventLog());
-  const llmServiceRef = useRef(new LLMService({ enabled: false }));
+  const particleSystemRef = useRef(new ParticleSystem());
+  const recordingRef = useRef(new RecordingSystem());
 
   useEffect(() => { configRef.current = config; }, [config]);
   useEffect(() => { pausedRef.current = isPaused; }, [isPaused]);
@@ -54,9 +66,7 @@ export default function App() {
     const a: Agent[] = [];
     const roles: Agent['role'][] = ['explorer', 'worker', 'coordinator', 'scout', 'carrier'];
     for (let i = 0; i < config.agentCount; i++) {
-      const agent = createAgent(`agent-${i}`, W * 0.3 + Math.random() * W * 0.4, H * 0.3 + Math.random() * H * 0.4, roles[i % roles.length]);
-      a.push(agent);
-      bioSystemRef.current.create(agent);
+      a.push(createAgent(`agent-${i}`, W * 0.3 + Math.random() * W * 0.4, H * 0.3 + Math.random() * H * 0.4, roles[i % roles.length]));
     }
     const r: Resource[] = [];
     for (let i = 0; i < 8 + Math.floor(Math.random() * 6); i++) {
@@ -64,13 +74,21 @@ export default function App() {
     }
     agentsRef.current = a;
     resourcesRef.current = r;
+    structuresRef.current = [];
+    threatsRef.current = [];
     msgCountRef.current = 0;
     timeRef.current = 0;
     eventLogRef.current.clear();
+    particleSystemRef.current.clear();
+    recordingRef.current.clear();
     setAgents([...a]);
     setResources([...r]);
+    setStructures([]);
+    setThreats([]);
     setMessageCount(0);
     setEvents([]);
+    setActionLog([]);
+    setRecordingStats({ isRecording: false, frameCount: 0, duration: 0 });
   }, [config.agentCount]);
 
   useEffect(() => { init(); }, []);
@@ -88,13 +106,11 @@ export default function App() {
         timeRef.current += cfg.speed * dt;
         const t = timeRef.current;
 
-        // Update world
         if (cfg.environmentEnabled) {
           worldSimRef.current.update(cfg.speed * dt);
           setWorldState(worldSimRef.current.getState());
         }
 
-        // Update hive mind
         if (cfg.memoryEnabled) {
           hiveMindRef.current.decay();
           for (const a of ca) {
@@ -109,12 +125,17 @@ export default function App() {
 
         const cc = establishConnections(ca, cfg);
         for (const a of ca) {
-          const prevPos = { ...a.position };
           const nb = ca.filter(o => o.id !== a.id && dist(a.position, o.position) < a.perceptionRadius);
           updateAgent(a, nb, cr, cfg, W, H, t);
-          bioSystemRef.current.update(a, prevPos);
           if (a.state === 'communicating') msgCountRef.current += 0.1;
+          if (a.state === 'alert' && Math.random() < 0.1) {
+            particleSystemRef.current.emit(a.position, 3, a.color, 1.5, 20);
+          }
         }
+
+        particleSystemRef.current.update();
+        recordingRef.current.recordFrame(ca, cr);
+        setRecordingStats(recordingRef.current.getStats());
 
         if (Math.floor(t * 10) % 30 === 0) {
           const m = calculateMetrics(ca, cr, cc);
@@ -122,16 +143,16 @@ export default function App() {
             ...m,
             totalMessages: Math.floor(msgCountRef.current),
             hiveMemorySize: hiveMindRef.current.getStats().knownLocations.length,
+            structuresBuilt: structuresRef.current.filter(s => s.completed).length,
+            threatsActive: threatsRef.current.length,
             worldTime: worldSimRef.current.getTimeString(),
             worldWeather: worldSimRef.current.getState().weather,
             eventRate: eventLogRef.current.getRate(),
           };
           setMetrics(updatedMetrics);
           setMessageCount(Math.floor(msgCountRef.current));
-          setBioSummary(bioSystemRef.current.getSummary());
           setEvents(eventLogRef.current.getEvents().slice(0, 20));
 
-          // Update metrics history
           setMetricsHistory(prev => ({
             speed: [...prev.speed, m.avgSpeed].slice(-60),
             coherence: [...prev.coherence, m.swarmCoherence * 100].slice(-60),
@@ -143,11 +164,10 @@ export default function App() {
         setResources([...cr]);
       }
 
-      // Render
       const canvas = canvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext('2d');
-        if (ctx) render(ctx, agentsRef.current, resourcesRef.current, configRef.current, W, H, timeRef.current);
+        if (ctx) render(ctx, agentsRef.current, resourcesRef.current, structuresRef.current, threatsRef.current, particleSystemRef.current.getParticles(), configRef.current, W, H, timeRef.current);
       }
       frame = requestAnimationFrame(loop);
     };
@@ -161,30 +181,46 @@ export default function App() {
     const sy = H / rect.height;
     const x = (e.clientX - rect.left) * sx;
     const y = (e.clientY - rect.top) * sy;
-    const r = createResource(`res-${resourcesRef.current.length}`, x, y);
-    resourcesRef.current.push(r);
-    setResources([...resourcesRef.current]);
-    eventLogRef.current.add('discovery', `Resource added at (${Math.round(x)}, ${Math.round(y)})`, 'success', undefined, { x, y });
+    
+    if (config.obstacleMode) {
+      const threat: Threat = { id: `threat-${threatsRef.current.length}`, position: { x, y }, radius: 30, severity: 0.7, type: 'hazard' };
+      threatsRef.current.push(threat);
+      setThreats([...threatsRef.current]);
+      eventLogRef.current.add('threat', `Threat added at (${Math.round(x)}, ${Math.round(y)})`, 'warning', undefined, { x, y });
+    } else if (config.constructionEnabled) {
+      const types: Structure['type'][] = ['wall', 'tower', 'beacon', 'shelter'];
+      const colors: Record<string, string> = { wall: '#886644', tower: '#4488ff', beacon: '#ffdd00', shelter: '#ff8844' };
+      const type = types[Math.floor(Math.random() * types.length)];
+      const structure: Structure = { id: `struct-${structuresRef.current.length}`, type, position: { x, y }, size: 40, progress: 0, completed: false, builderIds: [], color: colors[type] };
+      structuresRef.current.push(structure);
+      setStructures([...structuresRef.current]);
+      eventLogRef.current.add('construction', `${type} construction started`, 'info', undefined, { x, y });
+    } else {
+      const r = createResource(`res-${resourcesRef.current.length}`, x, y);
+      resourcesRef.current.push(r);
+      setResources([...resourcesRef.current]);
+      particleSystemRef.current.emit({ x, y }, 10, '#00ffcc', 2, 30);
+      eventLogRef.current.add('discovery', `Resource added at (${Math.round(x)}, ${Math.round(y)})`, 'success', undefined, { x, y });
+    }
   };
 
   const loadScenario = (scenarioId: string) => {
     const scenario = scenarios.find(s => s.id === scenarioId);
     if (scenario) {
       setConfig(c => ({ ...c, ...scenario.config }));
-      eventLogRef.current.add('scenario', `Loaded scenario: ${scenario.name}`, 'info');
+      eventLogRef.current.add('scenario', `Loaded: ${scenario.name}`, 'info');
       setTimeout(() => init(), 100);
     }
   };
 
+  const handleStartRecording = () => { recordingRef.current.startRecording(); setRecordingStats(recordingRef.current.getStats()); };
+  const handleStopRecording = () => { recordingRef.current.stopRecording(); setRecordingStats(recordingRef.current.getStats()); };
+
   const behaviors = [
-    { v: 'flocking', l: 'Flocking', i: '🐦' },
-    { v: 'search_rescue', l: 'Search & Rescue', i: '🔍' },
-    { v: 'resource_gathering', l: 'Gathering', i: '⛏️' },
-    { v: 'formation', l: 'V-Formation', i: '✈️' },
-    { v: 'patrol', l: 'Grid Patrol', i: '🛡️' },
-    { v: 'consensus', l: 'Consensus', i: '🤝' },
-    { v: 'predator_prey', l: 'Predator/Prey', i: '🐺' },
-    { v: 'neural_evolution', l: 'Neural Evo', i: '🧠' },
+    { v: 'flocking', l: 'Flocking', i: '🐦' }, { v: 'search_rescue', l: 'Search & Rescue', i: '🔍' },
+    { v: 'resource_gathering', l: 'Gathering', i: '⛏️' }, { v: 'formation', l: 'V-Formation', i: '✈️' },
+    { v: 'patrol', l: 'Grid Patrol', i: '🛡️' }, { v: 'consensus', l: 'Consensus', i: '🤝' },
+    { v: 'predator_prey', l: 'Predator/Prey', i: '🐺' }, { v: 'neural_evolution', l: 'Neural Evo', i: '🧠' },
     { v: 'stigmergy', l: 'Stigmergy', i: '🐜' },
   ];
 
@@ -216,7 +252,7 @@ export default function App() {
       </header>
 
       <main className="max-w-[1900px] mx-auto p-3">
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_260px] gap-3">
+        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_280px] gap-3">
           {/* Left Panel */}
           <div className="order-2 lg:order-1 space-y-3">
             <div className="bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-xl p-3 space-y-3 overflow-y-auto max-h-[calc(100vh-100px)]">
@@ -282,6 +318,7 @@ export default function App() {
                 <Toggle l="🌊 Environment" v={config.environmentEnabled} onChange={v => setConfig(c => ({ ...c, environmentEnabled: v }))} />
                 <Toggle l="🎂 Lifecycle" v={config.lifecycleEnabled} onChange={v => setConfig(c => ({ ...c, lifecycleEnabled: v }))} />
                 <Toggle l="🏗️ Construction" v={config.constructionEnabled} onChange={v => setConfig(c => ({ ...c, constructionEnabled: v }))} />
+                <Toggle l="🧠 Q-Learning" v={config.qLearningEnabled} onChange={v => setConfig(c => ({ ...c, qLearningEnabled: v }))} />
               </div>
 
               <div className="space-y-1.5">
@@ -292,6 +329,22 @@ export default function App() {
                 <Toggle l="Heatmap" v={config.showHeatmap} onChange={v => setConfig(c => ({ ...c, showHeatmap: v }))} />
                 <Toggle l="Flow Field" v={config.showFlowField} onChange={v => setConfig(c => ({ ...c, showFlowField: v }))} />
                 <Toggle l="Sub-Swarms" v={config.showSubSwarms} onChange={v => setConfig(c => ({ ...c, showSubSwarms: v }))} />
+                <Toggle l="🚧 Obstacle Mode" v={config.obstacleMode} onChange={v => setConfig(c => ({ ...c, obstacleMode: v }))} />
+              </div>
+
+              {/* Recording */}
+              <div className="space-y-1.5">
+                <div className="text-[9px] font-semibold text-gray-500 uppercase">📹 Recording</div>
+                <div className="flex gap-1">
+                  {!recordingStats.isRecording ? (
+                    <button onClick={handleStartRecording} className="flex-1 px-2 py-1 rounded text-[9px] bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30">● Record</button>
+                  ) : (
+                    <button onClick={handleStopRecording} className="flex-1 px-2 py-1 rounded text-[9px] bg-gray-700 text-gray-300 border border-gray-600 hover:bg-gray-600">■ Stop</button>
+                  )}
+                </div>
+                <div className="text-[8px] text-gray-500 text-center">
+                  {recordingStats.frameCount} frames • {recordingStats.duration.toFixed(1)}s
+                </div>
               </div>
             </div>
           </div>
@@ -302,7 +355,7 @@ export default function App() {
               className="w-full max-w-[900px] rounded-xl border border-gray-800/50 shadow-2xl cursor-crosshair"
               style={{aspectRatio:`${W}/${H}`}} />
             <div className="w-full max-w-[900px] bg-gray-900/60 border border-gray-700/30 rounded-lg px-3 py-1.5 flex items-center justify-between text-[9px] text-gray-500">
-              <span>💡 Click to add resources</span>
+              <span>💡 Click to {config.obstacleMode ? 'place threats' : config.constructionEnabled ? 'build structures' : 'add resources'}</span>
               <span>🔄 {config.behavior.replace('_',' ')} | 🌍 {worldState.timeOfDay} | 🌤️ {worldState.weather}</span>
               <span>⚡ {config.speed.toFixed(1)}x</span>
             </div>
@@ -387,18 +440,27 @@ export default function App() {
                 </div>
               )}
 
-              {/* Biography Stats */}
-              <div className="bg-gray-800/30 rounded p-1.5 border border-gray-700/30">
-                <div className="text-[8px] text-gray-500 uppercase mb-0.5">📖 Biographies</div>
-                <div className="flex justify-between text-[9px]">
-                  <span className="text-gray-400">Total Agents:</span>
-                  <span className="text-cyan-400 font-mono">{bioSummary.total}</span>
+              {/* Construction Stats */}
+              {config.constructionEnabled && structures.length > 0 && (
+                <div className="bg-orange-500/10 rounded p-1.5 border border-orange-500/30">
+                  <div className="text-[8px] text-orange-400 uppercase mb-0.5">🏗️ Construction</div>
+                  <div className="flex justify-between text-[9px]">
+                    <span className="text-gray-400">Completed/Total:</span>
+                    <span className="text-orange-400 font-mono">{structures.filter(s => s.completed).length}/{structures.length}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between text-[9px]">
-                  <span className="text-gray-400">Avg Resources:</span>
-                  <span className="text-yellow-400 font-mono">{bioSummary.avgResources.toFixed(1)}</span>
+              )}
+
+              {/* Threat Stats */}
+              {threats.length > 0 && (
+                <div className="bg-red-500/10 rounded p-1.5 border border-red-500/30">
+                  <div className="text-[8px] text-red-400 uppercase mb-0.5">⚠️ Threats</div>
+                  <div className="flex justify-between text-[9px]">
+                    <span className="text-gray-400">Active:</span>
+                    <span className="text-red-400 font-mono">{threats.length}</span>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Event Log */}
@@ -418,7 +480,7 @@ export default function App() {
                     event.severity === 'critical' ? 'text-red-400 bg-red-500/10 border-red-500/20' :
                     'text-green-400 bg-green-500/10 border-green-500/20'
                   }`}>
-                    <span className="flex-shrink-0">{event.type === 'discovery' ? '🔍' : event.type === 'scenario' ? '🎬' : '📋'}</span>
+                    <span className="flex-shrink-0">{event.type === 'discovery' ? '🔍' : event.type === 'scenario' ? '🎬' : event.type === 'threat' ? '⚠️' : event.type === 'construction' ? '🏗️' : '📋'}</span>
                     <div className="flex-1 min-w-0">
                       <div className="truncate">{event.description}</div>
                       <div className="text-[9px] opacity-50">{new Date(event.timestamp).toLocaleTimeString()}</div>
@@ -525,7 +587,7 @@ function Chart({title,data,color}:{title:string;data:number[];color:string}) {
 }
 
 // Rendering
-function render(ctx: CanvasRenderingContext2D, agents: Agent[], resources: Resource[], config: SwarmConfig, w: number, h: number, time: number) {
+function render(ctx: CanvasRenderingContext2D, agents: Agent[], resources: Resource[], structures: Structure[], threats: Threat[], particles: any[], config: SwarmConfig, w: number, h: number, time: number) {
   ctx.fillStyle = '#060a14';
   ctx.fillRect(0, 0, w, h);
 
@@ -544,11 +606,95 @@ function render(ctx: CanvasRenderingContext2D, agents: Agent[], resources: Resou
   ctx.fillStyle = g;
   ctx.fillRect(0, scanY-30, w, 60);
 
+  // Threats
+  for (const threat of threats) {
+    const pulse = Math.sin(time * 0.1) * 0.2 + 0.8;
+    const alpha = threat.severity * 0.3 * pulse;
+    const glow = ctx.createRadialGradient(threat.position.x, threat.position.y, 0, threat.position.x, threat.position.y, threat.radius * 2);
+    glow.addColorStop(0, `rgba(255, 0, 0, ${alpha})`);
+    glow.addColorStop(1, 'transparent');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(threat.position.x, threat.position.y, threat.radius * 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(threat.position.x, threat.position.y, threat.radius, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(255, 0, 0, ${threat.severity * 0.8})`;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.lineDashOffset = -time * 0.5;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = `rgba(255, 50, 50, ${threat.severity})`;
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('⚠', threat.position.x, threat.position.y + 4);
+  }
+
+  // Structures
+  for (const structure of structures) {
+    const glow = ctx.createRadialGradient(structure.position.x, structure.position.y, 0, structure.position.x, structure.position.y, structure.size * 1.5);
+    glow.addColorStop(0, `${structure.color}${structure.completed ? '40' : '20'}`);
+    glow.addColorStop(1, 'transparent');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(structure.position.x, structure.position.y, structure.size * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.save();
+    ctx.translate(structure.position.x, structure.position.y);
+    const alpha = structure.completed ? 'cc' : '88';
+    ctx.fillStyle = `${structure.color}${alpha}`;
+    ctx.strokeStyle = structure.color;
+    ctx.lineWidth = 2;
+    switch (structure.type) {
+      case 'wall':
+        ctx.fillRect(-structure.size / 2, -structure.size / 4, structure.size, structure.size / 2);
+        ctx.strokeRect(-structure.size / 2, -structure.size / 4, structure.size, structure.size / 2);
+        break;
+      case 'tower':
+        ctx.beginPath();
+        ctx.moveTo(0, -structure.size / 2);
+        ctx.lineTo(structure.size / 3, structure.size / 2);
+        ctx.lineTo(-structure.size / 3, structure.size / 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        break;
+      case 'beacon':
+        const pulse = Math.sin(time * 0.1) * 0.3 + 0.7;
+        ctx.beginPath();
+        ctx.arc(0, 0, structure.size / 3 * pulse, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        break;
+      case 'shelter':
+        ctx.beginPath();
+        ctx.arc(0, 0, structure.size / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        break;
+    }
+    ctx.restore();
+    if (!structure.completed) {
+      const barWidth = structure.size;
+      const barHeight = 3;
+      const barY = structure.position.y + structure.size / 2 + 5;
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(structure.position.x - barWidth / 2, barY, barWidth, barHeight);
+      ctx.fillStyle = structure.color;
+      ctx.fillRect(structure.position.x - barWidth / 2, barY, barWidth * (structure.progress / 100), barHeight);
+      ctx.fillStyle = '#ffffff88';
+      ctx.font = '8px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${Math.round(structure.progress)}%`, structure.position.x, barY + barHeight + 10);
+    }
+  }
+
   // Resources
   for (const r of resources) {
     const pulse = Math.sin(time*0.05+r.position.x)*0.3+0.7;
     const size = 8 + (r.amount/100)*8;
-    const colors: Record<string,string> = {energy:'#ffdd00',data:'#00ffcc',material:'#ff6600'};
+    const colors: Record<string,string> = {energy:'#ffdd00', data:'#00ffcc',material:'#ff6600'};
     const color = colors[r.type];
     const glow = ctx.createRadialGradient(r.position.x,r.position.y,0,r.position.x,r.position.y,size*3);
     glow.addColorStop(0, `${color}${r.discovered?'30':'15'}`);
@@ -679,6 +825,15 @@ function render(ctx: CanvasRenderingContext2D, agents: Agent[], resources: Resou
     ctx.fillRect(-bw/2,by,bw*(a.energy/100),bh);
 
     ctx.restore();
+  }
+
+  // Particles
+  for (const p of particles) {
+    const alpha = p.life / p.maxLife;
+    ctx.beginPath();
+    ctx.arc(p.position.x, p.position.y, p.size * alpha, 0, Math.PI * 2);
+    ctx.fillStyle = p.color + Math.floor(alpha * 255).toString(16).padStart(2, '0');
+    ctx.fill();
   }
 
   // HUD
