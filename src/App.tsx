@@ -7,8 +7,12 @@ import { CommunicationProtocol } from './utils/communicationProtocol';
 import { createPheromoneGrid, decayPheromone, diffusePheromone, depositPheromone, getTotalPheromoneIntensity, PheromoneGrid } from './utils/pheromoneSystem';
 import { LLMService } from './utils/llmService';
 import { SwarmAction, ActionResult } from './utils/llmActionExecutor';
+import { StateManager } from './utils/stateManager';
+import { AnalyticsEngine } from './utils/analyticsEngine';
 import LLMPanel from './components/LLMPanel';
 import DirectorPanel from './components/DirectorPanel';
+import { StateManagerPanel } from './components/StateManagerPanel';
+import { AnalyticsPanel } from './components/AnalyticsPanel';
 
 const W = 900, H = 600;
 
@@ -71,6 +75,9 @@ export default function App() {
   const commProtocolRef = useRef(new CommunicationProtocol());
   const pheromoneGridRef = useRef<PheromoneGrid>(createPheromoneGrid(W, H, 10));
   const llmServiceRef = useRef(new LLMService({ enabled: false }));
+  const stateManagerRef = useRef(new StateManager());
+  const analyticsEngineRef = useRef(new AnalyticsEngine());
+  const [analytics, setAnalytics] = useState(analyticsEngineRef.current.getAnalytics());
 
   useEffect(() => { configRef.current = config; }, [config]);
   useEffect(() => { pausedRef.current = isPaused; }, [isPaused]);
@@ -196,6 +203,10 @@ export default function App() {
           setMessageCount(Math.floor(msgCountRef.current));
           setEvents(eventLogRef.current.getEvents().slice(0, 20));
 
+          // Record analytics snapshot
+          analyticsEngineRef.current.recordSnapshot(updatedMetrics);
+          setAnalytics(analyticsEngineRef.current.getAnalytics());
+
           setMetricsHistory(prev => ({
             speed: [...prev.speed, m.avgSpeed].slice(-60),
             coherence: [...prev.coherence, m.swarmCoherence * 100].slice(-60),
@@ -254,6 +265,12 @@ export default function App() {
       eventLogRef.current.add('scenario', `Loaded: ${scenario.name}`, 'info');
       setTimeout(() => init(), 100);
     }
+  };
+
+  const handleLoadState = (newConfig: SwarmConfig) => {
+    setConfig(newConfig);
+    eventLogRef.current.add('state_change', 'Loaded saved state', 'info');
+    setTimeout(() => init(), 100);
   };
 
   const handleStartRecording = () => { recordingRef.current.startRecording(); setRecordingStats(recordingRef.current.getStats()); };
@@ -472,6 +489,17 @@ export default function App() {
               llmService={llmServiceRef.current}
               getContext={() => metrics}
             />
+
+            {/* State Manager Panel */}
+            <StateManagerPanel
+              stateManager={stateManagerRef.current}
+              currentConfig={config}
+              onLoadState={handleLoadState}
+              currentMetrics={metrics}
+            />
+
+            {/* Analytics Panel */}
+            <AnalyticsPanel analytics={analytics} />
 
             {/* World Status */}
             <div className="bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-xl p-3 space-y-2">
