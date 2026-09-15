@@ -382,7 +382,7 @@ export class RecordingSystem {
     
     this.frames.push({
       timestamp: now,
-      agents: agents.map(a => ({ id: a.id, position: { ...a.position }, velocity: { ...a.velocity }, energy: a.energy, state: a.state })),
+      agents: agents.map(a => ({ id: a.id, position: { ...a.position }, velocity: { ...a.velocity }, energy: a.energy, state: a.state, role: a.role })),
       resources: resources.map(r => ({ id: r.id, position: { ...r.position }, amount: r.amount, discovered: r.discovered })),
     });
     
