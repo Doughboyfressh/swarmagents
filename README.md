@@ -7,6 +7,57 @@ A sophisticated multi-agent simulation system featuring emergent collective beha
 ![React](https://img.shields.io/badge/React-18-61dafb)
 ![Vite](https://img.shields.io/badge/Vite-6.4-646cff)
 
+## 🚀 Quick Start (Windows)
+
+### Easiest Method: One-Click Startup
+
+**Just double-click `start-system.bat`!**
+
+This automated script will:
+1. ✅ Check if LLM server is running
+2. ✅ Start LLM server if needed (using your Qwen 3.6 27B model)
+3. ✅ Install all dependencies
+4. ✅ Start backend server
+5. ✅ Start frontend
+6. ✅ Open browser automatically
+
+### Manual Windows Setup
+
+If you prefer manual control or need to troubleshoot:
+
+**Step 1: Start LLM Server**
+```cmd
+start-llm.bat
+```
+This starts llama.cpp with your Qwen model at `C:\Users\Dough\Desktop\Qwen3.6-27B`
+
+**Step 2: Start Backend**
+```cmd
+cd backend
+npm install
+npm run dev
+```
+
+**Step 3: Start Frontend**
+```cmd
+npm install
+npm run dev
+```
+
+**Step 4: Open Browser**
+Navigate to: http://localhost:5173
+
+### Detailed Windows Guide
+
+See **`WINDOWS_SETUP.md`** for complete Windows installation guide including:
+- Installing llama.cpp
+- Configuring GPU settings
+- Troubleshooting common issues
+- Performance optimization
+- Monitoring GPU usage
+
+---
+
 ## 🎯 Overview
 
 This system simulates autonomous agents that exhibit complex emergent behaviors through simple local rules. Watch as agents flock together, gather resources, form patterns, and adapt to their environment in real-time.
