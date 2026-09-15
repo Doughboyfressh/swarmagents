@@ -109,12 +109,31 @@ export interface AgentTraits {
 export interface SwarmEvent {
   id: string;
   timestamp: number;
-  type: string;
+  type: EventType;
   agentId?: string;
   description: string;
   position?: Vector2D;
   severity: 'info' | 'warning' | 'critical' | 'success';
 }
+
+export type EventType =
+  | 'discovery'
+  | 'communication'
+  | 'state_change'
+  | 'evolution'
+  | 'subswarm_form'
+  | 'subswarm_merge'
+  | 'resource_depleted'
+  | 'agent_failure'
+  | 'agent_birth'
+  | 'memory_share'
+  | 'obstacle_placed'
+  | 'threat_detected'
+  | 'pattern_formed'
+  | 'task_assigned'
+  | 'scenario'
+  | 'threat'
+  | 'construction';
 
 export interface SubSwarm {
   id: number;
