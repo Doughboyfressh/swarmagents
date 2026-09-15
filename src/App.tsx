@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Agent, Resource, SwarmConfig, SwarmMetrics, Vector2D, SwarmEvent, Structure, Threat } from './types/swarm';
-import { createAgent, createResource, establishConnections, calculateMetrics, updateAgent, dist, mag, HiveMind, WorldSimulation, EventLog, ParticleSystem, RecordingSystem, scenarios } from './utils/swarmEngine';
+import { createAgent, createResource, establishConnections, calculateMetrics, updateAgent, dist, mag, add, sub, mul, div, normalize, random2D, HiveMind, WorldSimulation, EventLog, ParticleSystem, RecordingSystem, scenarios } from './utils/swarmEngine';
 import { SpatialHash } from './utils/spatialHash';
 import { MultiSwarmSystem } from './utils/multiSwarm';
 import { CommunicationProtocol } from './utils/communicationProtocol';
@@ -9,6 +9,11 @@ import { LLMService } from './utils/llmService';
 import { SwarmAction, ActionResult } from './utils/llmActionExecutor';
 import { StateManager } from './utils/stateManager';
 import { AnalyticsEngine } from './utils/analyticsEngine';
+import { BiographySystem } from './utils/biographySystem';
+import { QLearningSystem } from './utils/qLearning';
+import { TaskAllocator } from './utils/taskAllocation';
+import { ConstructionSystem } from './utils/constructionSystem';
+import { createEnvironment, updateEnvironment, getWindForce } from './utils/environmentSystem';
 import RightPanel from './components/RightPanel';
 
 const W = 900, H = 600;
@@ -74,6 +79,11 @@ export default function App() {
   const llmServiceRef = useRef(new LLMService({ enabled: false }));
   const stateManagerRef = useRef(new StateManager());
   const analyticsEngineRef = useRef(new AnalyticsEngine());
+  const biographySystemRef = useRef(new BiographySystem());
+  const qLearningRef = useRef(new QLearningSystem());
+  const taskAllocatorRef = useRef(new TaskAllocator());
+  const constructionSystemRef = useRef(new ConstructionSystem());
+  const environmentRef = useRef(createEnvironment(W, H));
   const [analytics, setAnalytics] = useState(analyticsEngineRef.current.getAnalytics());
 
   useEffect(() => { configRef.current = config; }, [config]);
@@ -161,6 +171,7 @@ export default function App() {
 
         if (cfg.environmentEnabled) {
           worldSimRef.current.update(cfg.speed * dt);
+          updateEnvironment(environmentRef.current, cfg.speed * dt);
           setWorldState(worldSimRef.current.getState());
         }
 
@@ -193,9 +204,76 @@ export default function App() {
         }
 
         const cc = establishConnections(ca, cfg);
+        
+        // Update biography system for all agents
+        for (const a of ca) {
+          const prevPos = { x: a.position.x - a.velocity.x * cfg.speed, y: a.position.y - a.velocity.y * cfg.speed };
+          const distanceTraveled = dist(prevPos, a.position);
+          biographySystemRef.current.updateBiography(a, {
+            distanceTraveled,
+            resourceCollected: a.state === 'working',
+            messageSent: a.state === 'communicating',
+          });
+        }
+        
         for (const a of ca) {
           const nb = ca.filter(o => o.id !== a.id && dist(a.position, o.position) < a.perceptionRadius);
+          
+          // Apply environment effects if enabled
+          if (cfg.environmentEnabled) {
+            const windForce = getWindForce(environmentRef.current, a.position, cfg.windStrength, cfg.windDirection);
+            a.velocity.x += windForce.x * 0.1;
+            a.velocity.y += windForce.y * 0.1;
+          }
+          
+          // Apply Q-learning if enabled
+          if (cfg.qLearningEnabled) {
+            const state = qLearningRef.current.getState(a, nb, cr, threatsRef.current);
+            const action = qLearningRef.current.chooseAction(a.id, state);
+            
+            // Apply action effects
+            if (action === 'explore') {
+              a.velocity = add(a.velocity, mul(random2D(), 0.5));
+            } else if (action === 'seek_resource') {
+              const nearestResource = cr.reduce((nearest, r) => {
+                const d = dist(a.position, r.position);
+                return d < nearest.dist ? { dist: d, resource: r } : nearest;
+              }, { dist: Infinity, resource: null as any });
+              if (nearestResource.resource) {
+                const direction = normalize(sub(nearestResource.resource.position, a.position));
+                a.velocity = add(a.velocity, mul(direction, 0.3));
+              }
+            } else if (action === 'flee') {
+              const nearestThreat = threatsRef.current.reduce((nearest, t) => {
+                const d = dist(a.position, t.position);
+                return d < nearest.dist ? { dist: d, threat: t } : nearest;
+              }, { dist: Infinity, threat: null as any });
+              if (nearestThreat.threat) {
+                const direction = normalize(sub(a.position, nearestThreat.threat.position));
+                a.velocity = add(a.velocity, mul(direction, 0.5));
+              }
+            } else if (action === 'communicate') {
+              a.state = 'communicating';
+            } else if (action === 'rest') {
+              a.energy = Math.min(100, a.energy + 0.5);
+            } else if (action === 'follow_pheromone' && cfg.pheromoneEnabled) {
+              // Follow pheromone gradient
+              const gx = Math.floor(a.position.x / 10);
+              const gy = Math.floor(a.position.y / 10);
+              if (gx > 0 && gx < pheromoneGridRef.current.width - 1 && gy > 0 && gy < pheromoneGridRef.current.height - 1) {
+                const left = pheromoneGridRef.current.data[gy * pheromoneGridRef.current.width + (gx - 1)];
+                const right = pheromoneGridRef.current.data[gy * pheromoneGridRef.current.width + (gx + 1)];
+                const up = pheromoneGridRef.current.data[(gy - 1) * pheromoneGridRef.current.width + gx];
+                const down = pheromoneGridRef.current.data[(gy + 1) * pheromoneGridRef.current.width + gx];
+                const gradientX = (right - left) * 2;
+                const gradientY = (down - up) * 2;
+                a.velocity = add(a.velocity, { x: gradientX * 0.2, y: gradientY * 0.2 });
+              }
+            }
+          }
+          
           updateAgent(a, nb, cr, cfg, W, H, t);
+          
           if (a.state === 'communicating') {
             msgCountRef.current += 0.1;
             // Send status update via communication protocol
@@ -207,6 +285,16 @@ export default function App() {
             const nearbyResource = cr.find(r => r.discovered && dist(a.position, r.position) < a.perceptionRadius);
             if (nearbyResource) {
               commProtocolRef.current.sendDiscovery(a.id, nearbyResource.position, nearbyResource.type);
+            }
+          }
+          
+          // Construction system integration
+          if (cfg.constructionEnabled && structuresRef.current.length > 0) {
+            for (const structure of structuresRef.current) {
+              if (!structure.completed && dist(a.position, structure.position) < structure.size + 20) {
+                constructionSystemRef.current.contributeToConstruction(a, structure.id, 0.1);
+                a.state = 'building';
+              }
             }
           }
         }
@@ -270,7 +358,7 @@ export default function App() {
     const y = (e.clientY - rect.top) * sy;
     
     if (config.obstacleMode) {
-      const threat: Threat = { id: `threat-${threatsRef.current.length}`, position: { x, y }, radius: 30, severity: 0.7, type: 'hazard' };
+      const threat: Threat = { id: `threat-${threatsRef.current.length}`, position: { x, y }, radius: 30, severity: 0.7, type: 'hazard', createdAt: Date.now() };
       threatsRef.current.push(threat);
       setThreats([...threatsRef.current]);
       eventLogRef.current.add('threat', `Threat added at (${Math.round(x)}, ${Math.round(y)})`, 'warning', undefined, { x, y });
