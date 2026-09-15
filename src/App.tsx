@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Agent, Resource, SwarmConfig, SwarmMetrics, Vector2D } from './types/swarm';
-import { createAgent, createResource, establishConnections, calculateMetrics, updateAgent, dist, mag } from './utils/swarmEngine';
+import { Agent, Resource, SwarmConfig, SwarmMetrics, Vector2D, SwarmEvent } from './types/swarm';
+import { createAgent, createResource, establishConnections, calculateMetrics, updateAgent, dist, mag, HiveMind, WorldSimulation, BiographySystem, EventLog, scenarios } from './utils/swarmEngine';
+import { LLMService } from './utils/llmService';
 
 const W = 900, H = 600;
 
@@ -10,6 +11,9 @@ const defaultConfig: SwarmConfig = {
   explorationWeight: 0.5, communicationRange: 120, maxSpeed: 3,
   behavior: 'flocking', showTrails: true, showConnections: true,
   showPerception: false, speed: 1, showSubSwarms: true, obstacleMode: false,
+  pheromoneEnabled: false, neuralNetEnabled: false, evolutionEnabled: false,
+  memoryEnabled: true, environmentEnabled: false, showHeatmap: false,
+  showFlowField: false, lifecycleEnabled: false, constructionEnabled: false,
 };
 
 export default function App() {
@@ -20,9 +24,15 @@ export default function App() {
     avgSpeed: 0, avgEnergy: 0, totalMessages: 0, resourcesFound: 0,
     tasksCompleted: 0, swarmCoherence: 0, coverageArea: 0, activeConnections: 0,
     avgFitness: 0, generation: 0, subSwarmCount: 0, eventRate: 0,
+    hiveMemorySize: 0, structuresBuilt: 0, threatsActive: 0, worldTime: '12:00', worldWeather: 'clear',
   });
   const [isPaused, setIsPaused] = useState(false);
   const [messageCount, setMessageCount] = useState(0);
+  const [events, setEvents] = useState<SwarmEvent[]>([]);
+  const [worldState, setWorldState] = useState<{ time: number; timeOfDay: 'dawn' | 'day' | 'dusk' | 'night'; day: number; season: 'spring' | 'summer' | 'autumn' | 'winter'; weather: 'clear' | 'rain' | 'storm' | 'fog' | 'wind'; temperature: number; visibility: number; resourceAbundance: number; threatLevel: number }>({ time: 8, timeOfDay: 'day', day: 1, season: 'spring', weather: 'clear', temperature: 20, visibility: 1, resourceAbundance: 1, threatLevel: 0.2 });
+  const [hiveStats, setHiveStats] = useState({ knownLocations: [] as any[], decisionCount: 0, goalProgress: 0 });
+  const [bioSummary, setBioSummary] = useState({ total: 0, avgResources: 0, avgDistance: 0 });
+  const [metricsHistory, setMetricsHistory] = useState({ speed: [] as number[], coherence: [] as number[], energy: [] as number[], connections: [] as number[] });
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const agentsRef = useRef<Agent[]>([]);
@@ -31,6 +41,11 @@ export default function App() {
   const pausedRef = useRef(isPaused);
   const msgCountRef = useRef(0);
   const timeRef = useRef(0);
+  const hiveMindRef = useRef(new HiveMind());
+  const worldSimRef = useRef(new WorldSimulation());
+  const bioSystemRef = useRef(new BiographySystem());
+  const eventLogRef = useRef(new EventLog());
+  const llmServiceRef = useRef(new LLMService({ enabled: false }));
 
   useEffect(() => { configRef.current = config; }, [config]);
   useEffect(() => { pausedRef.current = isPaused; }, [isPaused]);
@@ -39,10 +54,9 @@ export default function App() {
     const a: Agent[] = [];
     const roles: Agent['role'][] = ['explorer', 'worker', 'coordinator', 'scout', 'carrier'];
     for (let i = 0; i < config.agentCount; i++) {
-      a.push(createAgent(`agent-${i}`,
-        W * 0.3 + Math.random() * W * 0.4,
-        H * 0.3 + Math.random() * H * 0.4,
-        roles[i % roles.length]));
+      const agent = createAgent(`agent-${i}`, W * 0.3 + Math.random() * W * 0.4, H * 0.3 + Math.random() * H * 0.4, roles[i % roles.length]);
+      a.push(agent);
+      bioSystemRef.current.create(agent);
     }
     const r: Resource[] = [];
     for (let i = 0; i < 8 + Math.floor(Math.random() * 6); i++) {
@@ -52,9 +66,11 @@ export default function App() {
     resourcesRef.current = r;
     msgCountRef.current = 0;
     timeRef.current = 0;
+    eventLogRef.current.clear();
     setAgents([...a]);
     setResources([...r]);
     setMessageCount(0);
+    setEvents([]);
   }, [config.agentCount]);
 
   useEffect(() => { init(); }, []);
@@ -71,20 +87,62 @@ export default function App() {
         const cr = resourcesRef.current;
         timeRef.current += cfg.speed * dt;
         const t = timeRef.current;
+
+        // Update world
+        if (cfg.environmentEnabled) {
+          worldSimRef.current.update(cfg.speed * dt);
+          setWorldState(worldSimRef.current.getState());
+        }
+
+        // Update hive mind
+        if (cfg.memoryEnabled) {
+          hiveMindRef.current.decay();
+          for (const a of ca) {
+            for (const r of cr) {
+              if (r.discovered && dist(a.position, r.position) < a.perceptionRadius) {
+                hiveMindRef.current.contribute(a.id, r.position, r.type, r.amount);
+              }
+            }
+          }
+          setHiveStats(hiveMindRef.current.getStats());
+        }
+
         const cc = establishConnections(ca, cfg);
         for (const a of ca) {
+          const prevPos = { ...a.position };
           const nb = ca.filter(o => o.id !== a.id && dist(a.position, o.position) < a.perceptionRadius);
           updateAgent(a, nb, cr, cfg, W, H, t);
+          bioSystemRef.current.update(a, prevPos);
           if (a.state === 'communicating') msgCountRef.current += 0.1;
         }
+
         if (Math.floor(t * 10) % 30 === 0) {
           const m = calculateMetrics(ca, cr, cc);
-          setMetrics({ ...m, totalMessages: Math.floor(msgCountRef.current) });
+          const updatedMetrics = {
+            ...m,
+            totalMessages: Math.floor(msgCountRef.current),
+            hiveMemorySize: hiveMindRef.current.getStats().knownLocations.length,
+            worldTime: worldSimRef.current.getTimeString(),
+            worldWeather: worldSimRef.current.getState().weather,
+            eventRate: eventLogRef.current.getRate(),
+          };
+          setMetrics(updatedMetrics);
           setMessageCount(Math.floor(msgCountRef.current));
+          setBioSummary(bioSystemRef.current.getSummary());
+          setEvents(eventLogRef.current.getEvents().slice(0, 20));
+
+          // Update metrics history
+          setMetricsHistory(prev => ({
+            speed: [...prev.speed, m.avgSpeed].slice(-60),
+            coherence: [...prev.coherence, m.swarmCoherence * 100].slice(-60),
+            energy: [...prev.energy, m.avgEnergy].slice(-60),
+            connections: [...prev.connections, cc].slice(-60),
+          }));
         }
         setAgents([...ca]);
         setResources([...cr]);
       }
+
       // Render
       const canvas = canvasRef.current;
       if (canvas) {
@@ -106,6 +164,16 @@ export default function App() {
     const r = createResource(`res-${resourcesRef.current.length}`, x, y);
     resourcesRef.current.push(r);
     setResources([...resourcesRef.current]);
+    eventLogRef.current.add('discovery', `Resource added at (${Math.round(x)}, ${Math.round(y)})`, 'success', undefined, { x, y });
+  };
+
+  const loadScenario = (scenarioId: string) => {
+    const scenario = scenarios.find(s => s.id === scenarioId);
+    if (scenario) {
+      setConfig(c => ({ ...c, ...scenario.config }));
+      eventLogRef.current.add('scenario', `Loaded scenario: ${scenario.name}`, 'info');
+      setTimeout(() => init(), 100);
+    }
   };
 
   const behaviors = [
@@ -117,6 +185,7 @@ export default function App() {
     { v: 'consensus', l: 'Consensus', i: '🤝' },
     { v: 'predator_prey', l: 'Predator/Prey', i: '🐺' },
     { v: 'neural_evolution', l: 'Neural Evo', i: '🧠' },
+    { v: 'stigmergy', l: 'Stigmergy', i: '🐜' },
   ];
 
   return (
@@ -131,11 +200,12 @@ export default function App() {
               <h1 className="text-base font-bold bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
                 Agent Swarm Intelligence
               </h1>
-              <p className="text-[9px] text-gray-500 -mt-0.5">Advanced Multi-Agent System</p>
+              <p className="text-[9px] text-gray-500 -mt-0.5">Advanced Multi-Agent System • Neural • Evolutionary • Stigmergic</p>
             </div>
           </div>
           <div className="flex items-center gap-3 text-[10px] text-gray-500">
             <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>Online</span>
+            <span>Gen: {metrics.generation}</span>
             <span>Agents: {agents.length}</span>
             <button onClick={() => setIsPaused(p => !p)}
               className={`px-2 py-0.5 rounded text-[10px] font-medium ${isPaused ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'}`}>
@@ -146,65 +216,82 @@ export default function App() {
       </header>
 
       <main className="max-w-[1900px] mx-auto p-3">
-        <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr_240px] gap-3">
+        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_260px] gap-3">
           {/* Left Panel */}
-          <div className="order-2 lg:order-1 bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-xl p-3 space-y-3 overflow-y-auto max-h-[calc(100vh-100px)]">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-cyan-400 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>Controls
-              </h2>
-              <button onClick={init} className="px-2 py-0.5 rounded text-[10px] bg-red-500/20 text-red-400 border border-red-500/30">↻ Reset</button>
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="text-[9px] font-semibold text-gray-500 uppercase">Behavior</div>
-              {behaviors.map(b => (
-                <button key={b.v} onClick={() => setConfig(c => ({ ...c, behavior: b.v as any }))}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-[11px] ${
-                    config.behavior === b.v ? 'bg-cyan-500/20 border border-cyan-500/40 text-cyan-300' : 'bg-gray-800/50 border border-gray-700/30 text-gray-400 hover:bg-gray-800'
-                  }`}>
-                  <span>{b.i}</span><span className="font-medium">{b.l}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="text-[9px] font-semibold text-gray-500 uppercase">Agents ({config.agentCount})</div>
-              <div className="flex items-center gap-1.5">
-                <button onClick={() => setConfig(c => ({ ...c, agentCount: Math.max(5, c.agentCount - 5) }))} className="px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700 text-xs">−</button>
-                <input type="range" min="5" max="120" value={config.agentCount}
-                  onChange={e => setConfig(c => ({ ...c, agentCount: +e.target.value }))}
-                  className="flex-1 h-1 bg-gray-700 rounded appearance-none accent-cyan-500" />
-                <button onClick={() => setConfig(c => ({ ...c, agentCount: Math.min(120, c.agentCount + 5) }))} className="px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700 text-xs">+</button>
+          <div className="order-2 lg:order-1 space-y-3">
+            <div className="bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-xl p-3 space-y-3 overflow-y-auto max-h-[calc(100vh-100px)]">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-bold text-cyan-400 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>Controls
+                </h2>
+                <button onClick={init} className="px-2 py-0.5 rounded text-[10px] bg-red-500/20 text-red-400 border border-red-500/30">↻ Reset</button>
               </div>
-            </div>
 
-            <div className="space-y-1.5">
-              <div className="text-[9px] font-semibold text-gray-500 uppercase">Flocking</div>
-              <Slider l="Separation" v={config.separationWeight} min={0} max={5} step={0.1} onChange={v => setConfig(c => ({ ...c, separationWeight: v }))} />
-              <Slider l="Alignment" v={config.alignmentWeight} min={0} max={5} step={0.1} onChange={v => setConfig(c => ({ ...c, alignmentWeight: v }))} />
-              <Slider l="Cohesion" v={config.cohesionWeight} min={0} max={5} step={0.1} onChange={v => setConfig(c => ({ ...c, cohesionWeight: v }))} />
-              <Slider l="Exploration" v={config.explorationWeight} min={0} max={5} step={0.1} onChange={v => setConfig(c => ({ ...c, explorationWeight: v }))} />
-              <Slider l="Perception" v={config.perceptionRadius} min={20} max={200} step={5} onChange={v => setConfig(c => ({ ...c, perceptionRadius: v }))} />
-              <Slider l="Speed" v={config.maxSpeed} min={1} max={8} step={0.5} onChange={v => setConfig(c => ({ ...c, maxSpeed: v }))} />
-            </div>
+              {/* Scenarios */}
+              <div className="space-y-1.5">
+                <div className="text-[9px] font-semibold text-gray-500 uppercase">🎬 Scenarios</div>
+                <div className="grid grid-cols-2 gap-1">
+                  {scenarios.map(s => (
+                    <button key={s.id} onClick={() => loadScenario(s.id)} title={s.description}
+                      className="flex items-center gap-1 px-2 py-1 rounded text-[9px] bg-gray-800/50 border border-gray-700/30 text-gray-400 hover:bg-gray-800 hover:text-gray-300 transition-all">
+                      <span>{s.icon}</span><span className="truncate">{s.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-            <div className="space-y-1.5">
-              <div className="text-[9px] font-semibold text-gray-500 uppercase">Visualization</div>
-              <Toggle l="Trails" v={config.showTrails} onChange={v => setConfig(c => ({ ...c, showTrails: v }))} />
-              <Toggle l="Connections" v={config.showConnections} onChange={v => setConfig(c => ({ ...c, showConnections: v }))} />
-              <Toggle l="Perception" v={config.showPerception} onChange={v => setConfig(c => ({ ...c, showPerception: v }))} />
-            </div>
-
-            <div className="space-y-1.5 pt-2 border-t border-gray-700/50">
-              <div className="text-[9px] font-semibold text-gray-500 uppercase">Roles</div>
-              <div className="grid grid-cols-2 gap-0.5 text-[9px]">
-                {[['#00d4ff','Explorer'],['#00ff88','Worker'],['#ff6b00','Coordinator'],['#ff0066','Scout'],['#aa66ff','Carrier']].map(([c,l]) => (
-                  <div key={l} className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full" style={{backgroundColor:c}}></span>
-                    <span className="text-gray-400">{l}</span>
-                  </div>
+              <div className="space-y-1.5">
+                <div className="text-[9px] font-semibold text-gray-500 uppercase">Behavior</div>
+                {behaviors.map(b => (
+                  <button key={b.v} onClick={() => setConfig(c => ({ ...c, behavior: b.v as any }))}
+                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-[11px] ${
+                      config.behavior === b.v ? 'bg-cyan-500/20 border border-cyan-500/40 text-cyan-300' : 'bg-gray-800/50 border border-gray-700/30 text-gray-400 hover:bg-gray-800'
+                    }`}>
+                    <span>{b.i}</span><span className="font-medium">{b.l}</span>
+                  </button>
                 ))}
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="text-[9px] font-semibold text-gray-500 uppercase">Agents ({config.agentCount})</div>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => setConfig(c => ({ ...c, agentCount: Math.max(5, c.agentCount - 5) }))} className="px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700 text-xs">−</button>
+                  <input type="range" min="5" max="120" value={config.agentCount}
+                    onChange={e => setConfig(c => ({ ...c, agentCount: +e.target.value }))}
+                    className="flex-1 h-1 bg-gray-700 rounded appearance-none accent-cyan-500" />
+                  <button onClick={() => setConfig(c => ({ ...c, agentCount: Math.min(120, c.agentCount + 5) }))} className="px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700 text-xs">+</button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="text-[9px] font-semibold text-gray-500 uppercase">Flocking</div>
+                <Slider l="Separation" v={config.separationWeight} min={0} max={5} step={0.1} onChange={v => setConfig(c => ({ ...c, separationWeight: v }))} />
+                <Slider l="Alignment" v={config.alignmentWeight} min={0} max={5} step={0.1} onChange={v => setConfig(c => ({ ...c, alignmentWeight: v }))} />
+                <Slider l="Cohesion" v={config.cohesionWeight} min={0} max={5} step={0.1} onChange={v => setConfig(c => ({ ...c, cohesionWeight: v }))} />
+                <Slider l="Exploration" v={config.explorationWeight} min={0} max={5} step={0.1} onChange={v => setConfig(c => ({ ...c, explorationWeight: v }))} />
+                <Slider l="Perception" v={config.perceptionRadius} min={20} max={200} step={5} onChange={v => setConfig(c => ({ ...c, perceptionRadius: v }))} />
+                <Slider l="Speed" v={config.maxSpeed} min={1} max={8} step={0.5} onChange={v => setConfig(c => ({ ...c, maxSpeed: v }))} />
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="text-[9px] font-semibold text-gray-500 uppercase">Advanced Systems</div>
+                <Toggle l="🧠 Neural Networks" v={config.neuralNetEnabled} onChange={v => setConfig(c => ({ ...c, neuralNetEnabled: v }))} />
+                <Toggle l="🧬 Evolution" v={config.evolutionEnabled} onChange={v => setConfig(c => ({ ...c, evolutionEnabled: v }))} />
+                <Toggle l="🐜 Pheromones" v={config.pheromoneEnabled} onChange={v => setConfig(c => ({ ...c, pheromoneEnabled: v }))} />
+                <Toggle l="💾 Memory" v={config.memoryEnabled} onChange={v => setConfig(c => ({ ...c, memoryEnabled: v }))} />
+                <Toggle l="🌊 Environment" v={config.environmentEnabled} onChange={v => setConfig(c => ({ ...c, environmentEnabled: v }))} />
+                <Toggle l="🎂 Lifecycle" v={config.lifecycleEnabled} onChange={v => setConfig(c => ({ ...c, lifecycleEnabled: v }))} />
+                <Toggle l="🏗️ Construction" v={config.constructionEnabled} onChange={v => setConfig(c => ({ ...c, constructionEnabled: v }))} />
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="text-[9px] font-semibold text-gray-500 uppercase">Visualization</div>
+                <Toggle l="Trails" v={config.showTrails} onChange={v => setConfig(c => ({ ...c, showTrails: v }))} />
+                <Toggle l="Connections" v={config.showConnections} onChange={v => setConfig(c => ({ ...c, showConnections: v }))} />
+                <Toggle l="Perception" v={config.showPerception} onChange={v => setConfig(c => ({ ...c, showPerception: v }))} />
+                <Toggle l="Heatmap" v={config.showHeatmap} onChange={v => setConfig(c => ({ ...c, showHeatmap: v }))} />
+                <Toggle l="Flow Field" v={config.showFlowField} onChange={v => setConfig(c => ({ ...c, showFlowField: v }))} />
+                <Toggle l="Sub-Swarms" v={config.showSubSwarms} onChange={v => setConfig(c => ({ ...c, showSubSwarms: v }))} />
               </div>
             </div>
           </div>
@@ -215,9 +302,9 @@ export default function App() {
               className="w-full max-w-[900px] rounded-xl border border-gray-800/50 shadow-2xl cursor-crosshair"
               style={{aspectRatio:`${W}/${H}`}} />
             <div className="w-full max-w-[900px] bg-gray-900/60 border border-gray-700/30 rounded-lg px-3 py-1.5 flex items-center justify-between text-[9px] text-gray-500">
-              <span>💡 Click canvas to add resources</span>
-              <span>🔄 Behavior: {config.behavior.replace('_',' ')}</span>
-              <span>⚡ Speed: {config.speed.toFixed(1)}x</span>
+              <span>💡 Click to add resources</span>
+              <span>🔄 {config.behavior.replace('_',' ')} | 🌍 {worldState.timeOfDay} | 🌤️ {worldState.weather}</span>
+              <span>⚡ {config.speed.toFixed(1)}x</span>
             </div>
             <div className="w-full max-w-[900px] grid grid-cols-6 gap-1.5">
               <Stat l="Speed" v={metrics.avgSpeed.toFixed(1)} c="cyan" />
@@ -227,10 +314,47 @@ export default function App() {
               <Stat l="Fitness" v={metrics.avgFitness.toFixed(0)} c="pink" />
               <Stat l="Links" v={metrics.activeConnections.toString()} c="orange" />
             </div>
+
+            {/* Metrics Charts */}
+            <div className="w-full max-w-[900px] grid grid-cols-2 gap-2">
+              <Chart title="Speed" data={metricsHistory.speed} color="#06b6d4" />
+              <Chart title="Coherence" data={metricsHistory.coherence} color="#10b981" />
+              <Chart title="Energy" data={metricsHistory.energy} color="#f59e0b" />
+              <Chart title="Connections" data={metricsHistory.connections} color="#8b5cf6" />
+            </div>
           </div>
 
           {/* Right Panel */}
           <div className="order-3 space-y-3">
+            {/* World Status */}
+            <div className="bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-xl p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">{worldState.timeOfDay === 'dawn' ? '🌅' : worldState.timeOfDay === 'day' ? '☀️' : worldState.timeOfDay === 'dusk' ? '🌆' : '🌙'}</span>
+                <h3 className="text-xs font-bold text-gray-300 uppercase">World Status</h3>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[10px]">
+                <div className="bg-gray-800/50 rounded p-1.5">
+                  <div className="text-gray-500 text-[8px] uppercase">Time</div>
+                  <div className="font-mono font-bold text-yellow-400">{metrics.worldTime}</div>
+                  <div className="text-gray-400 capitalize">{worldState.timeOfDay}</div>
+                </div>
+                <div className="bg-gray-800/50 rounded p-1.5">
+                  <div className="text-gray-500 text-[8px] uppercase">Day</div>
+                  <div className="font-mono font-bold text-gray-300">{worldState.day}</div>
+                  <div className="text-gray-400">{worldState.season === 'spring' ? '🌸' : worldState.season === 'summer' ? '☀️' : worldState.season === 'autumn' ? '🍂' : '❄️'} {worldState.season}</div>
+                </div>
+                <div className="bg-gray-800/50 rounded p-1.5">
+                  <div className="text-gray-500 text-[8px] uppercase">Weather</div>
+                  <div className="text-gray-300">{worldState.weather === 'clear' ? '☀️' : worldState.weather === 'rain' ? '🌧️' : worldState.weather === 'storm' ? '⛈️' : worldState.weather === 'fog' ? '🌫️' : '💨'} {worldState.weather}</div>
+                </div>
+                <div className="bg-gray-800/50 rounded p-1.5">
+                  <div className="text-gray-500 text-[8px] uppercase">Temp</div>
+                  <div className={`font-mono font-bold ${worldState.temperature < 5 ? 'text-blue-400' : worldState.temperature > 30 ? 'text-red-400' : 'text-green-400'}`}>{worldState.temperature.toFixed(0)}°C</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Metrics */}
             <div className="bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-xl p-3 space-y-3">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
@@ -247,31 +371,61 @@ export default function App() {
                 <Mini l="Res" v={metrics.resourcesFound} c="text-yellow-400" />
                 <Mini l="Energy" v={metrics.avgEnergy.toFixed(0)} c="text-green-400" />
               </div>
-              <div className="space-y-1">
-                <div className="text-[8px] text-gray-500 uppercase">Roles</div>
-                {(['explorer','worker','coordinator','scout','carrier'] as const).map(role => {
-                  const count = agents.filter(a => a.role === role).length;
-                  const pct = (count / agents.length) * 100;
-                  const colors: Record<string,string> = {explorer:'#00d4ff',worker:'#00ff88',coordinator:'#ff6b00',scout:'#ff0066',carrier:'#aa66ff'};
-                  return (
-                    <div key={role} className="flex items-center gap-1.5">
-                      <span className="text-[8px] text-gray-500 w-14 capitalize">{role}</span>
-                      <div className="flex-1 h-1 bg-gray-800 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full" style={{width:`${pct}%`,backgroundColor:colors[role]}} />
-                      </div>
-                      <span className="text-[8px] text-gray-500 font-mono w-4 text-right">{count}</span>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="space-y-1">
-                <div className="text-[8px] text-gray-500 uppercase">States</div>
-                <div className="flex flex-wrap gap-0.5">
-                  {Object.entries(agents.reduce((a,b) => { a[b.state]=(a[b.state]||0)+1; return a; }, {} as Record<string,number>)).map(([s,c]) => {
-                    const sc: Record<string,string> = {idle:'bg-gray-600',moving:'bg-blue-500',communicating:'bg-cyan-400',working:'bg-green-500',returning:'bg-yellow-500',alert:'bg-red-500',fleeing:'bg-orange-500'};
-                    return <span key={s} className={`px-1 py-0 rounded text-[8px] text-white ${sc[s]||'bg-gray-600'}`}>{s.slice(0,4)}:{c}</span>;
-                  })}
+
+              {/* Hive Mind Stats */}
+              {config.memoryEnabled && (
+                <div className="bg-purple-500/10 rounded p-1.5 border border-purple-500/30">
+                  <div className="text-[8px] text-purple-400 uppercase mb-0.5">🧠 Hive Mind</div>
+                  <div className="flex justify-between text-[9px]">
+                    <span className="text-gray-400">Known Locations:</span>
+                    <span className="text-purple-400 font-mono">{hiveStats.knownLocations.length}</span>
+                  </div>
+                  <div className="flex justify-between text-[9px]">
+                    <span className="text-gray-400">Decisions:</span>
+                    <span className="text-cyan-400 font-mono">{hiveStats.decisionCount}</span>
+                  </div>
                 </div>
+              )}
+
+              {/* Biography Stats */}
+              <div className="bg-gray-800/30 rounded p-1.5 border border-gray-700/30">
+                <div className="text-[8px] text-gray-500 uppercase mb-0.5">📖 Biographies</div>
+                <div className="flex justify-between text-[9px]">
+                  <span className="text-gray-400">Total Agents:</span>
+                  <span className="text-cyan-400 font-mono">{bioSummary.total}</span>
+                </div>
+                <div className="flex justify-between text-[9px]">
+                  <span className="text-gray-400">Avg Resources:</span>
+                  <span className="text-yellow-400 font-mono">{bioSummary.avgResources.toFixed(1)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Event Log */}
+            <div className="bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-xl p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></span>
+                  <h3 className="text-xs font-bold text-gray-300 uppercase">Event Log</h3>
+                </div>
+                <span className="text-[10px] text-gray-500 font-mono">{metrics.eventRate.toFixed(1)} evt/s</span>
+              </div>
+              <div className="space-y-1 max-h-[200px] overflow-y-auto pr-1">
+                {events.slice(0, 15).map((event) => (
+                  <div key={event.id} className={`flex items-start gap-1.5 px-2 py-1 rounded border text-[10px] ${
+                    event.severity === 'info' ? 'text-blue-400 bg-blue-500/10 border-blue-500/20' :
+                    event.severity === 'warning' ? 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20' :
+                    event.severity === 'critical' ? 'text-red-400 bg-red-500/10 border-red-500/20' :
+                    'text-green-400 bg-green-500/10 border-green-500/20'
+                  }`}>
+                    <span className="flex-shrink-0">{event.type === 'discovery' ? '🔍' : event.type === 'scenario' ? '🎬' : '📋'}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate">{event.description}</div>
+                      <div className="text-[9px] opacity-50">{new Date(event.timestamp).toLocaleTimeString()}</div>
+                    </div>
+                  </div>
+                ))}
+                {events.length === 0 && <div className="text-[10px] text-gray-600 text-center py-4">Waiting for events...</div>}
               </div>
             </div>
           </div>
@@ -345,6 +499,27 @@ function Mini({l,v,c}:{l:string;v:number|string;c:string}) {
     <div className="bg-gray-800/50 rounded p-1">
       <div className="text-[7px] text-gray-500 uppercase">{l}</div>
       <div className={`text-[10px] font-mono ${c}`}>{v}</div>
+    </div>
+  );
+}
+
+function Chart({title,data,color}:{title:string;data:number[];color:string}) {
+  if (data.length < 2) return null;
+  const max = Math.max(...data, 1);
+  const min = Math.min(...data, 0);
+  const range = max - min || 1;
+  const h = 50;
+  const w = 200;
+  const points = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * h}`).join(' ');
+  return (
+    <div className="bg-gray-900/60 border border-gray-700/30 rounded-lg p-2">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[9px] text-gray-400 uppercase font-semibold">{title}</span>
+        <span className="text-[9px] font-mono" style={{color}}>{data[data.length-1].toFixed(1)}</span>
+      </div>
+      <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+        <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" />
+      </svg>
     </div>
   );
 }
@@ -487,7 +662,7 @@ function render(ctx: CanvasRenderingContext2D, agents: Agent[], resources: Resou
     ctx.closePath();
     const sc: Record<string,string> = {
       idle:`${a.color}88`,moving:`${a.color}cc`,communicating:`${a.color}ff`,
-      working:`${a.color}ee`,returning:`${a.color}aa`,alert:'#ff0000dd',fleeing:'#ff4444cc',
+      working:`${a.color}ee`,returning:`${a.color}aa`,alert:'#ff0000dd',fleeing:'#ff4444cc',learning:'#aa66ffcc',building:'#ff8844cc',
     };
     ctx.fillStyle = sc[a.state]||`${a.color}cc`;
     ctx.fill();
@@ -512,6 +687,15 @@ function render(ctx: CanvasRenderingContext2D, agents: Agent[], resources: Resou
   ctx.textAlign = 'left';
   ctx.fillText(`SWARM ACTIVE | N:${agents.length} | ${config.behavior.toUpperCase()}`, 10, 16);
   ctx.fillText(`T+${Math.floor(time/60)}s`, 10, 28);
+
+  // Active features
+  const features: string[] = [];
+  if (config.neuralNetEnabled) features.push('🧠');
+  if (config.pheromoneEnabled) features.push('🐜');
+  if (config.evolutionEnabled) features.push('🧬');
+  if (config.memoryEnabled) features.push('💾');
+  if (config.environmentEnabled) features.push('🌊');
+  if (features.length > 0) ctx.fillText(features.join(' '), 10, 40);
 
   // Corners
   ctx.strokeStyle = 'rgba(0,212,255,0.2)';
