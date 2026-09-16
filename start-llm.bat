@@ -49,13 +49,46 @@ cd /d "C:\Users\Dough\Desktop\Qwen3.6-27B"
 
 REM If you have llama.cpp installed, use this:
 if exist "server.exe" (
+    echo Starting llama.cpp server with CUDA support...
+    echo.
+    echo Model: %MODEL_FILE%
+    echo Context: 4096 tokens
+    echo GPU Layers: 99 (all layers to GPU)
+    echo Port: 8080
+    echo.
+    echo ========================================
+    echo.
+    
     server.exe -m "%MODEL_FILE%" -c 4096 --host 0.0.0.0 --port 8080 -ngl 99 --n-batch 512
 ) else (
     echo ERROR: llama.cpp server.exe not found!
     echo.
-    echo Please install llama.cpp:
-    echo 1. Download from: https://github.com/ggerganov/llama.cpp/releases
-    echo 2. Extract server.exe to: C:\Users\Dough\Desktop\Qwen3.6-27B
+    echo ========================================
+    echo   Installation Required
+    echo ========================================
+    echo.
+    echo You need to install llama.cpp to run the LLM server.
+    echo.
+    echo QUICK INSTALLATION:
+    echo.
+    echo Option 1: Run install-llama.bat (automated)
+    echo   - Double-click: install-llama.bat
+    echo   - Follow the prompts
+    echo   - Restart this script
+    echo.
+    echo Option 2: Manual installation
+    echo   1. Download from:
+    echo      https://github.com/ggerganov/llama.cpp/releases
+    echo.
+    echo   2. Get file: llama-bin-win-cuda-cu12.4-x64.zip
+    echo      (Make sure it says "cuda" and "cu12.x")
+    echo.
+    echo   3. Extract and copy server.exe to:
+    echo      C:\Users\Dough\Desktop\Qwen3.6-27B\
+    echo.
+    echo   4. Run this script again
+    echo.
+    echo See INSTALL_LLAMA.md for detailed instructions.
     echo.
     pause
     exit /b 1
