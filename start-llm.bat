@@ -60,7 +60,7 @@ if exist "C:\Users\Dough\AppData\Local\Microsoft\WindowsApps\llama.exe" (
     echo ========================================
     echo.
     
-    C:\Users\Dough\AppData\Local\Microsoft\WindowsApps\llama.exe serve -m "%MODEL_FILE%" -c 4096 --host 0.0.0.0 --port 8080 -ngl 99 --n-batch 512
+    C:\Users\Dough\AppData\Local\Microsoft\WindowsApps\llama.exe serve -m "%MODEL_FILE%" -c 4096 --host 0.0.0.0 --port 8080 -ngl 99
 ) else if exist "server.exe" (
     echo Starting llama.cpp server with CUDA support...
     echo.
@@ -72,7 +72,7 @@ if exist "C:\Users\Dough\AppData\Local\Microsoft\WindowsApps\llama.exe" (
     echo ========================================
     echo.
     
-    server.exe -m "%MODEL_FILE%" -c 4096 --host 0.0.0.0 --port 8080 -ngl 99 --n-batch 512
+    server.exe -m "%MODEL_FILE%" -c 4096 --host 0.0.0.0 --port 8080 -ngl 99
 ) else (
     echo ERROR: llama.cpp not found!
     echo.
