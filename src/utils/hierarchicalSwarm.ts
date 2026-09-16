@@ -2,9 +2,7 @@ import { Agent, Vector2D, Resource, Threat, SubSwarm } from '../types/swarm';
 import { dist, add, sub, mul, normalize, limit, mag } from './swarmEngine';
 import { Task, TaskAllocator } from './taskAllocation';
 
-export interface SwarmLeader {
-  id: string;
-  role: 'explorer' | 'worker' | 'coordinator' | 'scout' | 'carrier';
+export interface SwarmLeader extends Agent {
   leadershipScore: number;
   followers: string[];
   specialization: SwarmSpecialization;
@@ -45,13 +43,18 @@ export class HierarchicalSwarmManager {
       if (cluster.length < 3) continue;
 
       // Elect leader based on traits and role
-      const leader = this.electLeader(cluster);
+      const leaderAgent = this.electLeader(cluster);
       
       // Create specialized sub-swarms
-      const subSwarms = this.createSpecializedSubSwarms(cluster, leader);
+      const subSwarms = this.createSpecializedSubSwarms(cluster, leaderAgent);
       
-      // Assign agents to leader's follower list
-      leader.followers = cluster.filter(a => a.id !== leader.id).map(a => a.id);
+      // Convert Agent to SwarmLeader
+      const leader: SwarmLeader = {
+        ...leaderAgent,
+        leadershipScore: this.calculateLeadershipScore(leaderAgent),
+        followers: cluster.filter(a => a.id !== leaderAgent.id).map(a => a.id),
+        specialization: this.determineSpecialization(leaderAgent)
+      };
 
       const hierarchy: HierarchicalSwarm = {
         id: this.swarmIdCounter++,
@@ -71,9 +74,15 @@ export class HierarchicalSwarmManager {
     
     const unassigned = agents.filter(a => !assignedIds.has(a.id));
     if (unassigned.length >= 3) {
-      const leader = this.electLeader(unassigned);
-      const subSwarms = this.createSpecializedSubSwarms(unassigned, leader);
-      leader.followers = unassigned.filter(a => a.id !== leader.id).map(a => a.id);
+      const leaderAgent = this.electLeader(unassigned);
+      const subSwarms = this.createSpecializedSubSwarms(unassigned, leaderAgent);
+      
+      const leader: SwarmLeader = {
+        ...leaderAgent,
+        leadershipScore: this.calculateLeadershipScore(leaderAgent),
+        followers: unassigned.filter(a => a.id !== leaderAgent.id).map(a => a.id),
+        specialization: this.determineSpecialization(leaderAgent)
+      };
 
       hierarchies.push({
         id: this.swarmIdCounter++,
@@ -156,6 +165,40 @@ export class HierarchicalSwarmManager {
     }
 
     return bestLeader;
+  }
+
+  /**
+   * Calculate leadership score for an agent
+   */
+  private calculateLeadershipScore(agent: Agent): number {
+    let score = 0;
+    score += agent.traits.sociability * 30;
+    score += agent.traits.efficiency * 20;
+    score += (1 - agent.traits.caution) * 15;
+    score += agent.energy * 0.3;
+    if (agent.role === 'coordinator') score += 40;
+    else if (agent.role === 'scout') score += 20;
+    score += Math.min(agent.age * 0.05, 20);
+    score += agent.fitness * 0.5;
+    return score;
+  }
+
+  /**
+   * Determine specialization based on agent role and traits
+   */
+  private determineSpecialization(agent: Agent): SwarmSpecialization {
+    switch (agent.role) {
+      case 'explorer':
+      case 'scout':
+        return 'exploration';
+      case 'worker':
+      case 'carrier':
+        return 'gathering';
+      case 'coordinator':
+        return 'coordination';
+      default:
+        return 'defense';
+    }
   }
 
   /**
@@ -327,7 +370,7 @@ export class HierarchicalSwarmManager {
       a => subSwarm.agentIds.includes(a.id)
     );
 
-    this.applyFormationBehavior(agents, pattern, hierarchy.leader);
+    this.applyFormationBehavior(agents, pattern, hierarchy.leader, hierarchy);
   }
 
   /**
@@ -336,10 +379,13 @@ export class HierarchicalSwarmManager {
   private applyFormationBehavior(
     agents: Agent[],
     pattern: FormationPattern,
-    leader: SwarmLeader
+    leader: SwarmLeader,
+    hierarchy?: HierarchicalSwarm
   ): void {
     const sortedAgents = agents.sort((a, b) => a.id.localeCompare(b.id));
-    const leaderAgent = Array.from(hierarchy.agents.values()).find(a => a.id === leader.id);
+    const leaderAgent = hierarchy 
+      ? Array.from(hierarchy.agents.values()).find(a => a.id === leader.id)
+      : leader;
     
     if (!leaderAgent) return;
 

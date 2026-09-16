@@ -65,7 +65,7 @@ Be concise, technical, and insightful. Keep responses under 200 words.`,
     } catch { this.isConnected = false; return false; }
   }
 
-  async chat(userMessage: string, context?: SwarmMetrics): Promise<{ content: string; success: boolean; tokens: number; latency: number }> {
+  async chat(userMessage: string, context?: SwarmMetrics): Promise<{ content: string; success: boolean; tokens: number; latency: number; action?: { action: string; params: Record<string, any> } }> {
     if (!this.config.enabled) return { content: 'LLM disabled', success: false, tokens: 0, latency: 0 };
     if (this.isProcessing) return { content: 'Processing...', success: false, tokens: 0, latency: 0 };
     if (Date.now() - this.lastCallTime < 2000) return { content: 'Rate limited', success: false, tokens: 0, latency: 0 };
@@ -101,7 +101,18 @@ Be concise, technical, and insightful. Keep responses under 200 words.`,
       this.totalCalls++;
       this.isConnected = true;
 
-      return { content: assistantMessage, success: true, tokens, latency: Date.now() - startTime };
+      // Parse potential action from response
+      let action: { action: string; params: Record<string, any> } | undefined;
+      const actionMatch = assistantMessage.match(/ACTION:\s*```json\s*([\s\S]*?)\s*```/);
+      if (actionMatch) {
+        try {
+          action = JSON.parse(actionMatch[1]);
+        } catch {
+          // Invalid JSON, ignore action
+        }
+      }
+
+      return { content: assistantMessage, success: true, tokens, latency: Date.now() - startTime, action };
     } catch (error) {
       this.failedCalls++;
       this.isConnected = false;
