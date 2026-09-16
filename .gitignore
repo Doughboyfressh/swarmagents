@@ -1,16 +1,26 @@
-```
-# Dependencies
+# Examples 1:
+
+# Example 2 (Project with artifacts):
+
+#Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
+dist/
+build/
+#Dependencies
+.venv/
+venv/
 node_modules/
-
-# Environment
-.env
-.env.local
-*.env.*
-
-# Logs and temp files
+#Logs and temp files
 *.log
 *.tmp
-
-# Editors
+*.swp
+#Environment
+.env
+.env.local
+.env.*
+#Editors
 .vscode/
-```
+.idea/
