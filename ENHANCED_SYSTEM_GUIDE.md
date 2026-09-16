@@ -3,7 +3,7 @@
 ## Overview
 Your agent swarm has been upgraded from a simulation to a **fully autonomous, self-improving real-world execution system** with:
 
-- 👁️ **Vision Capabilities** - Screen perception via Qwen-VL 27B
+- 👁️ **Vision Capabilities** - Screen perception via Qwen3.6-27B
 - 🧠 **Long-term Memory** - ChromaDB vector storage
 - 🛡️ **Self-Correction** - Critic agent review system
 - 🛠️ **Skill Libraries** - Dynamic capability expansion
@@ -64,7 +64,7 @@ Response: {
 }
 ```
 
-### Send to Qwen-VL
+### Send to Qwen3.6-27B
 The image is automatically sent to your LLM with this prompt structure:
 ```
 [System: Here is the current screen state. Analyze what you see and determine next action.]
@@ -100,7 +100,7 @@ Response: {
                            │                      │
                            ▼                      ▼
                     ┌──────────────┐     ┌────────────────────┐
-                    │  Qwen-VL 27B │     │  Windows PC        │
+                    │  Qwen3.6-27B │     │  Windows PC        │
                     │  (llama.cpp) │     │  - File System     │
                     │  RTX 5090    │     │  - Browser         │
                     └──────────────┘     │  - Mouse/Keyboard  │
@@ -114,7 +114,7 @@ Response: {
                                          └────────────────────┘
 ```
 
-## Prompt Engineering for Qwen-VL
+## Prompt Engineering for Qwen3.6-27B
 
 Use this system prompt for best results:
 
@@ -231,4 +231,4 @@ Success? ──No──▶ Retry with correction
 3. **Test Skills**: "Run a system health check"
 4. **Test Self-Correction**: "Organize my Downloads folder"
 
-Your RTX 5090 will handle Qwen-VL inference while Python executes real actions!
+Your RTX 5090 will handle Qwen3.6-27B inference while Python executes real actions!

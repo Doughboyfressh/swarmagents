@@ -1,6 +1,6 @@
 """
 Enhanced Real World Executor with Vision Capabilities
-Designed for Qwen-VL 27B on RTX 5090
+Designed for Qwen3.6-27B on RTX 5090
 """
 from flask import Flask, request, jsonify
 from flask_cors import CORS

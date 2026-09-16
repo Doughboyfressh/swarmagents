@@ -1,6 +1,6 @@
 # 🎉 Complete System Upgrade Summary
 
-## All Improvements Implemented for Qwen-VL 27B on RTX 5090
+## All Improvements Implemented for Qwen3.6-27B on RTX 5090
 
 Your agent swarm has been transformed from a simulation into a **fully autonomous, self-improving real-world execution system** with ALL requested features:
 
@@ -8,7 +8,7 @@ Your agent swarm has been transformed from a simulation into a **fully autonomou
 
 ## ✅ Implemented Features
 
-### 1. 👁️ Vision Capabilities (Qwen-VL Ready)
+### 1. 👁️ Vision Capabilities (Qwen3.6-27B Ready)
 - **Screenshot capture** with base64 encoding
 - **Pre/post action verification** images
 - **Region-specific screenshots** for focused analysis
@@ -99,7 +99,7 @@ This starts:
 
 ## 💬 Test Commands
 
-Try these with your Qwen-VL 27B swarm:
+Try these with your Qwen3.6-27B swarm:
 
 **Vision Tests:**
 - "Take a screenshot and describe what you see"
@@ -123,7 +123,7 @@ Try these with your Qwen-VL 27B swarm:
 
 ---
 
-## 🔧 Integration with Qwen-VL 27B
+## 🔧 Integration with Qwen3.6-27B
 
 ### Prompt Structure for Vision
 ```
@@ -138,8 +138,8 @@ Available actions: screenshot, click, type, shell, file_read, file_write
 
 ### llama.cpp Configuration (RTX 5090)
 ```bash
-# Optimal settings for Qwen-VL 27B
-./main -m qwen-vl-27b.gguf \
+# Optimal settings for Qwen3.6-27B
+./main -m qwen-3.6-27b-27b.gguf \
   --gpu-layers 99 \
   --ctx-size 16384 \
   --batch-size 512 \
@@ -167,7 +167,7 @@ Available actions: screenshot, click, type, shell, file_read, file_write
     │         │
     ▼         ▼
 ┌──────────┐  ┌──────────────┐
-│ Qwen-VL  │  │ Python       │
+│ Qwen3.6-27B  │  │ Python       │
 │ 27B LLM  │  │ Executor     │
 │ RTX 5090 │  │ Port 5000    │
 └──────────┘  └──────┬───────┘
@@ -240,7 +240,7 @@ rm -rf ./agent_memory/
 ## 🎯 What Your Swarm Can Now Do
 
 ✅ **See** your screen via screenshots  
-✅ **Think** with Qwen-VL 27B vision+text  
+✅ **Think** with Qwen3.6-27B vision+text  
 ✅ **Act** via mouse, keyboard, files, shell  
 ✅ **Learn** from past experiences (ChromaDB)  
 ✅ **Verify** results with before/after images  
