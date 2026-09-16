@@ -2,15 +2,23 @@
 # Dependencies
 node_modules/
 
-# Environment
+# Database files
+*.sqlite3
+
+# Environment files
 .env
 .env.local
 *.env.*
 
-# Logs and temp files
+# Logs and temporary files
 *.log
 *.tmp
 
 # Editors
 .vscode/
+.idea/
+
+# OS specific
+.DS_Store
+Thumbs.db
 ```
