@@ -76,7 +76,11 @@ export default function App() {
   const multiSwarmRef = useRef(new MultiSwarmSystem());
   const commProtocolRef = useRef(new CommunicationProtocol());
   const pheromoneGridRef = useRef<PheromoneGrid>(createPheromoneGrid(W, H, 10));
-  const llmServiceRef = useRef(new LLMService({ enabled: false }));
+  const llmServiceRef = useRef(new LLMService({ 
+    endpoint: import.meta.env.VITE_LLM_ENDPOINT || 'http://localhost:8080',
+    model: import.meta.env.VITE_LLM_MODEL || 'unsloth/Qwen3.6-27B-GGUF:Q6_K_XL',
+    enabled: import.meta.env.VITE_LLM_ENABLED === 'true' 
+  }));
   const stateManagerRef = useRef(new StateManager());
   const analyticsEngineRef = useRef(new AnalyticsEngine());
   const biographySystemRef = useRef(new BiographySystem());
