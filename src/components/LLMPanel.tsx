@@ -47,6 +47,44 @@ export default function LLMPanel({ llmService, getContext }: LLMPanelProps) {
       const context = getContext();
       const response = await llmService.chat(userMessage, context);
 
+      // Display action if LLM returned one
+      if (response.action) {
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: `🔧 **Executing Action**: ${JSON.stringify(response.action, null, 2)}` 
+        }]);
+        
+        // Execute the action via backend
+        try {
+          const result = await fetch('http://localhost:3001/api/execute', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: response.action.action,
+              params: response.action.params
+            }),
+          });
+          const executionResult = await result.json();
+          
+          if (executionResult.success) {
+            setMessages(prev => [...prev, { 
+              role: 'assistant', 
+              content: `✅ **Action Completed**: ${executionResult.message || JSON.stringify(executionResult)}` 
+            }]);
+          } else {
+            setMessages(prev => [...prev, { 
+              role: 'assistant', 
+              content: `❌ **Action Failed**: ${executionResult.error}` 
+            }]);
+          }
+        } catch (execError) {
+          setMessages(prev => [...prev, { 
+            role: 'assistant', 
+            content: `❌ **Execution Error**: ${execError instanceof Error ? execError.message : 'Unknown error'}` 
+          }]);
+        }
+      }
+
       setMessages(prev => [...prev, { role: 'assistant', content: response.content }]);
       setStats(llmService.getStats());
     } catch (error) {
