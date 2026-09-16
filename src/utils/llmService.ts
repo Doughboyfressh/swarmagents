@@ -24,7 +24,7 @@ export class LLMService {
   private isConnected = false;
 
   constructor(config: Partial<LLMConfig> = {}) {
-    this.config = { endpoint: 'http://localhost:8080', model: 'qwen-3.6-27b', temperature: 0.7, maxTokens: 512, enabled: false, ...config };
+    this.config = { endpoint: 'http://localhost:8080', model: 'qwen-3.6-27b', temperature: 0.7, maxTokens: 512, enabled: true, ...config };
     this.initSystemPrompt();
   }
 
