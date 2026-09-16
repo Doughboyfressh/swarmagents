@@ -196,7 +196,9 @@ export class AdvancedCommunicationProtocol {
       // Limit template cache size
       if (this.messageTemplates.size > 100) {
         const firstKey = this.messageTemplates.keys().next().value;
-        this.messageTemplates.delete(firstKey);
+        if (firstKey) {
+          this.messageTemplates.delete(firstKey);
+        }
       }
     }
     
@@ -359,7 +361,9 @@ export class AdvancedCommunicationProtocol {
     this.seenMessages.add(messageId);
     if (this.seenMessages.size > this.maxSeenMessages) {
       const first = this.seenMessages.values().next().value;
-      this.seenMessages.delete(first);
+      if (first) {
+        this.seenMessages.delete(first);
+      }
     }
   }
 
