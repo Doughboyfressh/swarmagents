@@ -1,18 +1,7 @@
 ```
-# Environment
-.env
-.env.local
-*.env.*
+# Dependencies
+node_modules/
 
-# Logs and temp files
-*.log
-*.tmp
-
-# Editors
-.vscode/
-.idea/
-
-# OS generated files
-.DS_Store
-Thumbs.db
+# Vite build artifacts
+node_modules/.vite/
 ```
