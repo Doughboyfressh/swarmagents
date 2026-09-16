@@ -1,24 +1,26 @@
-```
-# Dependencies
+# Examples 1:
+
+# Example 2 (Project with artifacts):
+
+#Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
+dist/
+build/
+#Dependencies
+.venv/
+venv/
 node_modules/
-
-# Database files
-*.sqlite3
-
-# Environment files
-.env
-.env.local
-*.env.*
-
-# Logs and temporary files
+#Logs and temp files
 *.log
 *.tmp
-
-# Editors
+*.swp
+#Environment
+.env
+.env.local
+.env.*
+#Editors
 .vscode/
 .idea/
-
-# OS specific
-.DS_Store
-Thumbs.db
-```

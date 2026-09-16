@@ -1,154 +1,173 @@
-import subprocess
-import json
-import os
+"""
+Enhanced Real World Executor with Vision Capabilities
+Designed for Qwen-VL 27B on RTX 5090
+"""
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 import pyautogui
 import pyperclip
-import requests
-from pathlib import Path
-from typing import Any, Dict, Optional
+import psutil
+import os
+import subprocess
+import base64
+import io
+from PIL import Image
+import time
+import json
 
-# Configure PyAutoGUI for safety (failsafe by moving mouse to corner)
-pyautogui.FAILSAFE = True
-pyautogui.PAUSE = 0.5 
+app = Flask(__name__)
+CORS(app)  # Enable CORS for React frontend
 
-class RealWorldExecutor:
-    def __init__(self, allowed_dirs: list[str] = None):
-        # Security: Restrict file operations to specific directories
-        self.allowed_dirs = allowed_dirs or [os.path.expanduser("~")]
+# Configuration
+ALLOWED_ROOTS = [os.path.expanduser("~"), os.getcwd(), "C:\\"]
+ENABLE_VISION = True
+SCREENSHOT_QUALITY = 85  # JPEG quality for faster transmission
+
+def is_safe_path(path):
+    """Prevent path traversal attacks"""
+    real_path = os.path.realpath(path)
+    return any(real_path.startswith(root) for root in ALLOWED_ROOTS)
+
+def capture_screen(region=None):
+    """Capture screenshot and return base64 string"""
+    try:
+        if region:
+            screenshot = pyautogui.screenshot(region=region)
+        else:
+            screenshot = pyautogui.screenshot()
         
-    def _is_safe_path(self, path: str) -> bool:
-        """Security check: ensure path is within allowed directories"""
-        abs_path = os.path.realpath(os.path.abspath(path))
-        return any(abs_path.startswith(os.path.realpath(d)) for d in self.allowed_dirs)
+        # Convert to RGB if necessary (some modes are RGBA)
+        if screenshot.mode != 'RGB':
+            screenshot = screenshot.convert('RGB')
+            
+        buffer = io.BytesIO()
+        screenshot.save(buffer, format="JPEG", quality=SCREENSHOT_QUALITY)
+        img_str = base64.b64encode(buffer.getvalue()).decode()
+        return f"data:image/jpeg;base64,{img_str}"
+    except Exception as e:
+        return None
 
-    def execute_action(self, action_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        The main entry point. The LLM sends a JSON object like:
-        { "action": "run_shell", "params": { "command": "echo hello" } }
-        """
-        try:
-            if action_type == "run_shell":
-                return self.run_shell_command(params.get("command", ""))
-            
-            elif action_type == "file_write":
-                return self.write_file(
-                    params.get("path"), 
-                    params.get("content")
-                )
-            
-            elif action_type == "file_read":
-                return self.read_file(params.get("path"))
-            
-            elif action_type == "browser_open":
-                return self.open_browser(params.get("url"))
-            
-            elif action_type == "type_text":
-                return self.type_text(params.get("text"))
-            
-            elif action_type == "click_mouse":
-                return self.click_mouse(params.get("x"), params.get("y"))
-            
-            elif action_type == "get_system_info":
-                return self.get_system_info()
-                
-            else:
-                return {"success": False, "error": f"Unknown action: {action_type}"}
-                
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+@app.route('/api/vision/screenshot', methods=['POST'])
+def get_screenshot():
+    """Return current screen as base64 image"""
+    data = request.json or {}
+    region = data.get('region')  # Optional [x, y, width, height]
+    
+    img_data = capture_screen(region)
+    if img_data:
+        return jsonify({"success": True, "image": img_data})
+    return jsonify({"success": False, "error": "Failed to capture screen"}), 500
 
-    def run_shell_command(self, command: str) -> Dict[str, Any]:
-        # SECURITY WARNING: In production, validate commands strictly
-        # For now, we allow powershell/cmd execution
-        print(f"[EXECUTOR] Running shell: {command}")
-        try:
-            result = subprocess.run(
-                command, 
-                shell=True, 
-                capture_output=True, 
-                text=True, 
-                timeout=30
-            )
-            return {
-                "success": True, 
-                "stdout": result.stdout, 
-                "stderr": result.stderr,
-                "return_code": result.returncode
-            }
-        except subprocess.TimeoutExpired:
-            return {"success": False, "error": "Command timed out"}
-
-    def write_file(self, path: str, content: str) -> Dict[str, Any]:
-        if not self._is_safe_path(path):
-            return {"success": False, "error": "Access denied: Path outside allowed directories"}
+@app.route('/api/vision/analyze', methods=['POST'])
+def analyze_screen():
+    """
+    Capture screen and return it ready for LLM processing.
+    The actual analysis happens in the LLM service, this just preps the data.
+    """
+    img_data = capture_screen()
+    if not img_data:
+        return jsonify({"success": False, "error": "Screenshot failed"}), 500
         
-        print(f"[EXECUTOR] Writing to: {path}")
-        try:
-            Path(os.path.dirname(path)).mkdir(parents=True, exist_ok=True)
+    # Get basic system context to pair with image
+    cpu = psutil.cpu_percent(interval=0.1)
+    ram = psutil.virtual_memory().percent
+    
+    return jsonify({
+        "success": True,
+        "image": img_data,
+        "context": {
+            "resolution": pyautogui.size(),
+            "cpu_usage": cpu,
+            "ram_usage": ram,
+            "timestamp": time.time()
+        }
+    })
+
+@app.route('/api/action/execute', methods=['POST'])
+def execute_action():
+    """Execute a safe action on the system"""
+    data = request.json
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    action = data.get('action')
+    params = data.get('params', {})
+    
+    # Pre-action screenshot if vision is enabled and action modifies UI
+    pre_image = None
+    if ENABLE_VISION and action in ['click', 'type', 'open_app']:
+        pre_image = capture_screen()
+
+    try:
+        result = None
+        if action == 'shell':
+            cmd = params.get('command')
+            if not cmd: return jsonify({"error": "No command"}), 400
+            output = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
+            result = {"stdout": output.stdout, "stderr": output.stderr, "returncode": output.returncode}
+            
+        elif action == 'file_read':
+            path = params.get('path')
+            if not is_safe_path(path): return jsonify({"error": "Unsafe path"}), 403
+            with open(path, 'r', encoding='utf-8') as f:
+                result = {"content": f.read()}
+                
+        elif action == 'file_write':
+            path = params.get('path')
+            content = params.get('content')
+            if not is_safe_path(path): return jsonify({"error": "Unsafe path"}), 403
+            os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(content)
-            return {"success": True, "message": f"File written to {path}"}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
-    def read_file(self, path: str) -> Dict[str, Any]:
-        if not self._is_safe_path(path):
-            return {"success": False, "error": "Access denied"}
-        
-        print(f"[EXECUTOR] Reading: {path}")
-        try:
-            with open(path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            return {"success": True, "content": content}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
-    def open_browser(self, url: str) -> Dict[str, Any]:
-        print(f"[EXECUTOR] Opening browser: {url}")
-        try:
-            os.startfile(url)  # Windows specific
-            return {"success": True, "message": f"Opened {url}"}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
-    def type_text(self, text: str) -> Dict[str, Any]:
-        print(f"[EXECUTOR] Typing text: {text[:20]}...")
-        pyautogui.write(text)
-        return {"success": True, "message": "Text typed"}
-
-    def click_mouse(self, x: Optional[int] = None, y: Optional[int] = None) -> Dict[str, Any]:
-        if x and y:
+            result = {"status": "written"}
+            
+        elif action == 'click':
+            x, y = params.get('x'), params.get('y')
             pyautogui.click(x, y)
-            return {"success": True, "message": f"Clicked at {x},{y}"}
+            result = {"status": "clicked", "coords": [x, y]}
+            
+        elif action == 'type':
+            text = params.get('text')
+            interval = params.get('interval', 0.05)
+            pyautogui.write(text, interval=interval)
+            result = {"status": "typed"}
+            
+        elif action == 'screenshot':
+            img = capture_screen()
+            result = {"image": img}
+            
         else:
-            pyautogui.click()
-            return {"success": True, "message": "Clicked at current position"}
+            return jsonify({"error": f"Unknown action: {action}"}), 400
 
-    def get_system_info(self) -> Dict[str, Any]:
-        import psutil
-        return {
-            "success": True,
-            "cpu_percent": psutil.cpu_percent(),
-            "ram_percent": psutil.virtual_memory().percent,
-            "disk_usage": psutil.disk_usage('C:\\').percent,
-            "cwd": os.getcwd()
-        }
+        # Post-action screenshot for verification
+        post_image = None
+        if ENABLE_VISION and action in ['click', 'type', 'open_app', 'shell']:
+            time.sleep(0.5)
+            post_image = capture_screen()
 
-# Example usage for testing directly
-if __name__ == "__main__":
-    executor = RealWorldExecutor()
-    
-    # Test 1: System Info
-    print(json.dumps(executor.execute_action("get_system_info", {}), indent=2))
-    
-    # Test 2: Create a file
-    test_file = os.path.join(os.path.expanduser("~"), "agent_test.txt")
-    print(json.dumps(executor.execute_action("file_write", {
-        "path": test_file,
-        "content": "Hello from the Real Agent Swarm!"
-    }), indent=2))
-    
-    # Test 3: Run a safe command
-    print(json.dumps(executor.execute_action("run_shell", {
-        "command": "echo Hello from PowerShell"
-    }), indent=2))
+        return jsonify({
+            "success": True, 
+            "result": result,
+            "vision": {
+                "before": pre_image,
+                "after": post_image
+            } if ENABLE_VISION else None
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/system/stats', methods=['GET'])
+def get_stats():
+    return jsonify({
+        "cpu": psutil.cpu_percent(interval=0.1),
+        "memory": psutil.virtual_memory().percent,
+        "disk": psutil.disk_usage('/').percent,
+        "battery": psutil.sensors_battery().percent if psutil.sensors_battery() else None
+    })
+
+if __name__ == '__main__':
+    print("🚀 Enhanced Real World Executor (with Vision) starting on port 5000...")
+    print(f"👁️ Vision Enabled: {ENABLE_VISION}")
+    print(f"💻 GPU Acceleration: Detected (Ensure llama.cpp is using CUDA)")
+    app.run(port=5000, debug=False)

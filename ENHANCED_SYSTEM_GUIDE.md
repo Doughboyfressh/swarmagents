@@ -1,426 +1,234 @@
-# 🚀 Enhanced Agent Swarm - Complete Upgrade Guide
+# 🚀 Enhanced Agent Swarm with Vision - Complete Guide
 
 ## Overview
+Your agent swarm has been upgraded from a simulation to a **fully autonomous, self-improving real-world execution system** with:
 
-Your agent swarm has been upgraded from a basic simulation to a **fully autonomous, self-improving real-world execution system** with:
-
-- 👁️ **Vision Capabilities** - Qwen-VL integration for screen perception
-- 🧠 **Long-term Memory** - ChromaDB vector database for learning
-- 🛡️ **Self-Correction** - Critic agent reviews actions before/after execution
+- 👁️ **Vision Capabilities** - Screen perception via Qwen-VL 27B
+- 🧠 **Long-term Memory** - ChromaDB vector storage
+- 🛡️ **Self-Correction** - Critic agent review system
 - 🛠️ **Skill Libraries** - Dynamic capability expansion
-- ⚡ **RTX 5090 Optimized** - Maximum performance on your hardware
+- ⚡ **RTX 5090 Optimized** - Full GPU acceleration
 
----
+## Quick Start (Windows)
 
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    User (You)                               │
-│              "Organize my downloads folder"                 │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│  React Frontend + LLM Panel                                 │
-│  - Chat interface                                           │
-│  - Action visualization                                     │
-│  - Real-time feedback                                       │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Node.js Backend (Orchestrator)                             │
-│  - Routes requests                                          │
-│  - Manages swarm state                                      │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│  LLM Service (Qwen3.6-27B)                                  │
-│  - Analyzes request                                         │
-│  - Plans actions                                            │
-│  - Outputs JSON actions                                     │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Enhanced Python Executor                                   │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │  Critic Agent (Safety Review)                       │   │
-│  │  - Reviews action plans                             │   │
-│  │  - Verifies results                                 │   │
-│  └─────────────────────────────────────────────────────┘   │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │  Vision System (Qwen-VL)                            │   │
-│  │  - Takes screenshots                                │   │
-│  │  - Analyzes screen content                          │   │
-│  └─────────────────────────────────────────────────────┘   │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │  ChromaDB Memory                                    │   │
-│  │  - Stores execution history                         │   │
-│  │  - Retrieves similar past actions                   │   │
-│  │  - Saves learned skills                             │   │
-│  └─────────────────────────────────────────────────────┘   │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │  Skill Library                                      │   │
-│  │  - Built-in skills                                  │   │
-│  │  - Custom learned skills                            │   │
-│  └─────────────────────────────────────────────────────┘   │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Windows PC (Real World)                                    │
-│  - File operations                                          │
-│  - Browser control                                          │
-│  - Keyboard/mouse input                                     │
-│  - System monitoring                                        │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Installation (Windows)
-
-### Step 1: Install Dependencies
-
+### 1. Install Dependencies
 ```powershell
-# Navigate to project directory
-cd C:\path\to\your\project
-
-# Install Python dependencies
 pip install flask flask-cors pyautogui pyperclip psutil requests pillow chromadb opencv-python-headless
 ```
 
-### Step 2: Configure LLM Endpoint
-
-Make sure your Qwen3.6-27B is running via llama.cpp server:
-
+### 2. Run the System
 ```powershell
-# Example llama.cpp command (adjust paths)
-.\server.exe -m models\qwen3.6-27b.gguf --port 8080 --ctx-size 8192
-```
-
-For **vision capabilities**, ensure you're using Qwen-VL model:
-
-```powershell
-.\server.exe -m models\qwen-vl.gguf --port 8080 --ctx-size 8192 --mmproj models\qwen-vl-mmproj.gguf
-```
-
-### Step 3: Start the Enhanced System
-
-```powershell
-# One-click start
 .\start-enhanced.bat
 ```
 
 Or manually:
-
 ```powershell
-# Terminal 1: Python Executor Server
-python enhanced_real_world_executor.py
+# Terminal 1: Python Executor
+python real_world_executor.py
 
-# Terminal 2: Node.js Backend
-cd backend
+# Terminal 2: Node Backend
 npm run dev
 
-# Terminal 3: React Frontend
-npm run dev
+# Terminal 3: Frontend (if separate)
+npm run dev --prefix client
 ```
 
----
+## New API Endpoints
 
-## New Capabilities
+### Vision Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/vision/screenshot` | POST | Capture screen as base64 image |
+| `/api/vision/analyze` | POST | Capture screen + system context for LLM |
 
-### 1. Vision System 👁️
+### Action Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/action/execute` | POST | Execute action with before/after screenshots |
+| `/api/system/stats` | GET | Get CPU, RAM, disk usage |
 
-**Take Screenshots:**
+## Usage Examples
+
+### With Vision
 ```json
-{
-  "action": "take_screenshot",
-  "params": {}
-}
-```
-
-**Analyze Screen with Qwen-VL:**
-```json
-{
-  "action": "analyze_screen",
-  "params": {
-    "prompt": "What applications are open? Describe the layout."
+// Request screenshot
+POST http://localhost:5000/api/vision/analyze
+Response: {
+  "success": true,
+  "image": "data:image/jpeg;base64,...",
+  "context": {
+    "resolution": [1920, 1080],
+    "cpu_usage": 23.5,
+    "ram_usage": 45.2
   }
 }
 ```
 
-**Example Usage:**
-> "Take a screenshot and tell me what's on my screen"
-> "Can you see if Chrome is open? What tabs are visible?"
+### Send to Qwen-VL
+The image is automatically sent to your LLM with this prompt structure:
+```
+[System: Here is the current screen state. Analyze what you see and determine next action.]
+[Image: <base64_data>]
+[Context: CPU 23%, RAM 45%, Resolution 1920x1080]
+[User Goal: <your task>]
+```
 
----
-
-### 2. Long-term Memory 🧠
-
-The system now **remembers** past executions and learns from experience.
-
-**Automatic Memory:**
-- Every action is saved to ChromaDB
-- Similar past actions are retrieved automatically
-- Execution outcomes are stored for learning
-
-**Search Memory:**
+### Execute Action with Verification
 ```json
+POST http://localhost:5000/api/action/execute
 {
-  "action": "search_memory",
-  "params": {
-    "query": "file organization",
-    "n_results": 5
+  "action": "click",
+  "params": {"x": 500, "y": 300}
+}
+Response: {
+  "success": true,
+  "result": {"status": "clicked", "coords": [500, 300]},
+  "vision": {
+    "before": "data:image/jpeg;base64,...",
+    "after": "data:image/jpeg;base64,..."
   }
 }
 ```
 
-**Example Usage:**
-> "Remember how I organized files last time"
-> "Have we done this before? Show me similar actions"
+## Architecture
 
----
-
-### 3. Self-Correction (Critic Agent) 🛡️
-
-**Before Execution:**
-- Reviews action plans for safety
-- Checks for potential issues
-- Suggests improvements
-- Can reject dangerous actions
-
-**After Execution:**
-- Verifies if outcome matches expectations
-- Identifies discrepancies
-- Executes follow-up actions if needed
-
-**Example with Expected Outcome:**
-```json
-{
-  "action": "file_write",
-  "params": {
-    "path": "C:\\Users\\You\\test.txt",
-    "content": "Hello",
-    "expected_outcome": "File exists with 'Hello' content"
-  }
-}
+```
+┌─────────────┐     ┌──────────────┐     ┌────────────────────┐
+│   React UI  │────▶│  Node.js API │────▶│  Python Executor   │
+│  (Port 5173)│     │  (Port 3001) │     │    (Port 5000)     │
+└─────────────┘     └──────────────┘     └────────────────────┘
+                           │                      │
+                           ▼                      ▼
+                    ┌──────────────┐     ┌────────────────────┐
+                    │  Qwen-VL 27B │     │  Windows PC        │
+                    │  (llama.cpp) │     │  - File System     │
+                    │  RTX 5090    │     │  - Browser         │
+                    └──────────────┘     │  - Mouse/Keyboard  │
+                                         │  - Shell Commands  │
+                                         └────────────────────┘
+                                                │
+                                                ▼
+                                         ┌────────────────────┐
+                                         │   ChromaDB Memory  │
+                                         │   ./agent_memory/  │
+                                         └────────────────────┘
 ```
 
----
+## Prompt Engineering for Qwen-VL
 
-### 4. Skill Libraries 🛠️
+Use this system prompt for best results:
 
-**Built-in Skills:**
+```
+You are an autonomous agent swarm with vision capabilities running on Windows.
+You can SEE the screen via screenshots and TAKE ACTIONS via mouse/keyboard.
 
-| Skill | Description |
-|-------|-------------|
-| `organize_downloads` | Organizes Downloads folder by file extension |
-| `cleanup_temp` | Cleans temporary files |
-| `system_health_check` | Comprehensive CPU/RAM/Disk health check |
+AVAILABLE ACTIONS:
+- screenshot: Capture current screen
+- click: Click at x,y coordinates  
+- type: Type text
+- shell: Run command
+- file_read: Read file
+- file_write: Write file
 
-**Learn New Skills:**
-```json
-{
-  "action": "learn_skill",
-  "params": {
-    "name": "backup_documents",
-    "code": "def backup(params): ...",
-    "description": "Backs up Documents folder to external drive"
-  }
-}
+VISION WORKFLOW:
+1. Take screenshot to see current state
+2. Analyze what you see
+3. Plan next action
+4. Execute action
+5. Verify result with new screenshot
+6. Repeat until goal achieved
+
+SAFETY RULES:
+- Always verify before destructive actions
+- Move mouse to corner for emergency stop
+- Report progress after each step
 ```
 
-**List Available Skills:**
-```json
-{
-  "action": "list_skills",
-  "params": {}
-}
+## Memory System
+
+ChromaDB stores:
+- Successful action sequences
+- Failed attempts and lessons learned
+- User preferences
+- Skill definitions
+
+Query examples:
+- "Show me similar tasks we've done"
+- "What worked last time?"
+- "Remember my preferred workflow"
+
+## Self-Correction Flow
+
 ```
-
-**Execute Custom Skill:**
-```json
-{
-  "action": "organize_downloads",
-  "params": {}
-}
+User Request
+    │
+    ▼
+┌─────────────┐
+│  Planner    │ → Creates action plan
+└─────────────┘
+    │
+    ▼
+┌─────────────┐
+│   Critic    │ → Reviews for safety/errors
+└─────────────┘
+    │
+    ▼
+┌─────────────┐
+│  Executor   │ → Takes action + screenshots
+└─────────────┘
+    │
+    ▼
+┌─────────────┐
+│  Verifier   │ → Compares before/after images
+└─────────────┘
+    │
+    ▼
+Success? ──No──▶ Retry with correction
+    │
+   Yes
+    │
+    ▼
+┌─────────────┐
+│   Memory    │ → Store successful pattern
+└─────────────┘
 ```
-
----
-
-## RTX 5090 Optimization Tips
-
-Your RTX 5090 with 32GB VRAM can handle:
-
-1. **Flash Attention** - Enable in llama.cpp for 2-3x speedup
-2. **Speculative Decoding** - Use smaller draft model
-3. **Batch Processing** - Process multiple actions simultaneously
-4. **GPU Offloading** - Ensure all layers on GPU
-
-**Optimal llama.cpp Settings:**
-```bash
-.\server.exe \
-  -m qwen3.6-27b.gguf \
-  --port 8080 \
-  --ctx-size 16384 \
-  --n-gpu-layers 99 \
-  --flash-attn \
-  --batch-size 512 \
-  --ubatch-size 512
-```
-
-**For Vision (Qwen-VL):**
-```bash
-.\server.exe \
-  -m qwen-vl.gguf \
-  --mmproj qwen-vl-mmproj.gguf \
-  --port 8080 \
-  --ctx-size 8192 \
-  --n-gpu-layers 99 \
-  --flash-attn
-```
-
----
-
-## Example Workflows
-
-### Workflow 1: Smart File Organization
-
-> **You:** "Organize my Downloads folder and clean up temp files"
-
-**Agent Process:**
-1. 🧠 Searches memory for similar past organizations
-2. 🛡️ Critic reviews the plan for safety
-3. 🛠️ Executes `organize_downloads` skill
-4. 🛠️ Executes `cleanup_temp` skill
-5. ✅ Verifies results
-6. 💾 Saves execution to memory
-
----
-
-### Workflow 2: Visual System Monitoring
-
-> **You:** "Take a screenshot and analyze what's running, then give me a system health report"
-
-**Agent Process:**
-1. 👁️ Takes screenshot
-2. 👁️ Sends to Qwen-VL for analysis
-3. 🛠️ Runs `system_health_check` skill
-4. 📊 Combines visual + metrics data
-5. 💾 Remembers system state
-
----
-
-### Workflow 3: Learning New Skills
-
-> **You:** "Create a skill that backs up my Desktop to D:\\Backups"
-
-**Agent Process:**
-1. 🛠️ Generates Python code for backup skill
-2. 📚 Saves skill to ChromaDB
-3. ✅ Tests the skill
-4. 🔁 Ready for future use
-
-> **Later:** "Run the desktop backup skill"
-
----
-
-## Safety Features
-
-| Feature | Protection |
-|---------|------------|
-| **Path Restrictions** | Only allows file ops in safe directories |
-| **Critic Review** | Blocks dangerous shell commands |
-| **PyAutoGUI Failsafe** | Move mouse to corner to emergency stop |
-| **Timeout Limits** | Commands timeout after 30 seconds |
-| **Result Verification** | Confirms actions succeeded |
-| **Memory Logging** | All actions logged for audit |
-
----
-
-## API Reference
-
-### Enhanced Actions
-
-| Action | Params | Description |
-|--------|--------|-------------|
-| `take_screenshot` | `{}` | Capture screen |
-| `analyze_screen` | `{prompt: string}` | AI screen analysis |
-| `search_memory` | `{query: string, n_results: number}` | Search past actions |
-| `learn_skill` | `{name, code, description}` | Save new skill |
-| `list_skills` | `{}` | List available skills |
-| `organize_downloads` | `{}` | Auto-organize Downloads |
-| `cleanup_temp` | `{}` | Clean temp files |
-| `system_health_check` | `{}` | Full health report |
-
-### Original Actions (Still Available)
-
-- `run_shell`, `file_write`, `file_read`, `browser_open`
-- `type_text`, `click_mouse`, `get_system_info`
-
----
 
 ## Troubleshooting
 
-### ChromaDB Not Initializing
-```
-⚠️ ChromaDB not available: [error]
-```
-**Fix:** Reinstall: `pip uninstall chromadb && pip install chromadb`
+### Vision not working
+- Ensure `pillow` is installed: `pip install pillow`
+- Check ENABLE_VISION = True in executor
+- Verify screenshot permissions on Windows
 
-### Vision Analysis Failing
-```
-Vision API error: 400
-```
-**Fix:** Ensure Qwen-VL model is loaded with mmproj file
+### Slow performance
+- Reduce SCREENSHOT_QUALITY (default 85)
+- Use region screenshots instead of full screen
+- Ensure llama.cpp is using CUDA: `nvidia-smi`
 
-### Critic Too Slow
-**Fix:** Lower temperature or use smaller critic model
+### Memory issues
+- Clear ChromaDB: Delete `./agent_memory/` folder
+- Reduce context window size
+- Restart Python executor
 
-### Memory Not Saving
-**Fix:** Check `./agent_memory` directory permissions
+### Actions failing
+- Check PyAutoGUI failsafe (move mouse to unstick)
+- Run as Administrator for some operations
+- Review error logs in console
 
----
+## Security Notes
+
+⚠️ **Important:**
+- Only run on trusted networks (localhost is safe)
+- Path traversal protection enabled
+- Emergency stop: Move mouse to top-left corner
+- Review destructive commands before executing
+- Set `ENABLE_REAL_WORLD=false` when not in use
 
 ## Next Steps
 
-1. **Start the system**: `.\start-enhanced.bat`
-2. **Test vision**: "Take a screenshot and describe it"
-3. **Test memory**: "Remember that I like blue themes"
-4. **Test skills**: "Run system health check"
-5. **Learn a skill**: "Create a skill that..."
+1. **Test Vision**: "Take a screenshot and describe what you see"
+2. **Test Memory**: "Remember that I prefer dark mode"
+3. **Test Skills**: "Run a system health check"
+4. **Test Self-Correction**: "Organize my Downloads folder"
 
----
-
-## Performance Benchmarks (RTX 5090)
-
-| Task | Time |
-|------|------|
-| Simple action (no critic) | ~500ms |
-| Action with critic review | ~2-3s |
-| Vision analysis | ~3-5s |
-| Memory search (1000 entries) | ~100ms |
-| Skill execution | ~1-10s (varies) |
-
----
-
-## Support
-
-For issues or questions:
-1. Check logs in console
-2. Review `./agent_memory` for execution history
-3. Test individual components separately
-4. Ensure LLM endpoint is accessible
-
-**System Status Commands:**
-- Health: `http://localhost:5000/health`
-- Memory: Search via chat
-- Skills: `{"action": "list_skills"}`
-
----
-
-🎉 **Your agent swarm is now a fully autonomous, self-improving system!**
+Your RTX 5090 will handle Qwen-VL inference while Python executes real actions!
