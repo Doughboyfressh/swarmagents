@@ -9,6 +9,8 @@ interface DirectorPanelProps {
   onExecuteAction: (action: SwarmAction) => Promise<ActionResult>;
   currentParams: Record<string, number>;
   currentFeatures: Record<string, boolean>;
+  agentsRef: React.MutableRefObject<any[]>;
+  configRef: React.MutableRefObject<SwarmConfig>;
 }
 
 export default function DirectorPanel({ 
@@ -16,7 +18,9 @@ export default function DirectorPanel({
   getContext, 
   onExecuteAction,
   currentParams,
-  currentFeatures 
+  currentFeatures,
+  agentsRef,
+  configRef
 }: DirectorPanelProps) {
   const [isDirecting, setIsDirecting] = useState(false);
   const [currentPlan, setCurrentPlan] = useState<any>(null);
@@ -38,8 +42,8 @@ export default function DirectorPanel({
       const context = getContext();
       
       const prompt = buildDirectorPrompt({
-        agentCount: 0, // Will be filled from context
-        behavior: 'flocking',
+        agentCount: agentsRef.current?.length || 0,
+        behavior: configRef.current?.behavior || 'flocking',
         avgEnergy: context.avgEnergy,
         swarmCoherence: context.swarmCoherence,
         resourcesFound: context.resourcesFound,
