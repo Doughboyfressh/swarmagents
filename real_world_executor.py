@@ -17,8 +17,9 @@ class RealWorldExecutor:
         self.allowed_dirs = allowed_dirs or [os.path.expanduser("~")]
         
     def _is_safe_path(self, path: str) -> bool:
-        abs_path = os.path.abspath(path)
-        return any(abs_path.startswith(d) for d in self.allowed_dirs)
+        """Security check: ensure path is within allowed directories"""
+        abs_path = os.path.realpath(os.path.abspath(path))
+        return any(abs_path.startswith(os.path.realpath(d)) for d in self.allowed_dirs)
 
     def execute_action(self, action_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
         """
