@@ -14,9 +14,17 @@ const wss = new WebSocketServer({ server });
 app.use(cors());
 app.use(express.json());
 
-// Initialize services
-const orchestrator = getOrchestrator();
-const llmService = getLLMService();
+// Initialize services with real-world execution enabled
+const ENABLE_REAL_WORLD = process.env.ENABLE_REAL_WORLD === 'true';
+const REAL_WORLD_EXECUTOR_URL = process.env.REAL_WORLD_EXECUTOR_URL || 'http://localhost:5000';
+
+console.log(`🌍 Real-world execution: ${ENABLE_REAL_WORLD ? 'ENABLED' : 'DISABLED'}`);
+if (ENABLE_REAL_WORLD) {
+  console.log(`   Executor URL: ${REAL_WORLD_EXECUTOR_URL}`);
+}
+
+const orchestrator = getOrchestrator(ENABLE_REAL_WORLD, REAL_WORLD_EXECUTOR_URL);
+const llmService = getLLMService(ENABLE_REAL_WORLD, REAL_WORLD_EXECUTOR_URL);
 
 // WebSocket connections
 const clients = new Set<WebSocket>();
@@ -37,9 +45,18 @@ wss.on('connection', (ws: WebSocket) => {
       // Handle LLM chat messages
       if (data.type === 'llm_chat') {
         const response = await llmService.chat(data.message, orchestrator.getMetrics());
+        
+        // If LLM returned an action and real-world execution is enabled, execute it
+        let actionResult = null;
+        if (ENABLE_REAL_WORLD && response.action) {
+          console.log('🤖 LLM requested real-world action:', response.action);
+          actionResult = await llmService.executeAction(response.action);
+        }
+        
         ws.send(JSON.stringify({
           type: 'llm_response',
           payload: response,
+          actionResult,
           timestamp: Date.now(),
         }));
       }
@@ -227,7 +244,30 @@ app.post('/api/llm/chat', async (req, res) => {
   try {
     const { message } = req.body;
     const response = await llmService.chat(message, orchestrator.getMetrics());
-    res.json(response);
+    
+    // Execute action if LLM returned one and real-world is enabled
+    let actionResult = null;
+    if (ENABLE_REAL_WORLD && response.action) {
+      console.log('🤖 REST API: LLM requested real-world action:', response.action);
+      actionResult = await llmService.executeAction(response.action);
+    }
+    
+    res.json({ ...response, actionResult });
+  } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+// New endpoint for direct real-world action execution
+app.post('/api/execute', async (req, res) => {
+  if (!ENABLE_REAL_WORLD) {
+    return res.status(403).json({ success: false, error: 'Real-world execution is disabled' });
+  }
+  
+  try {
+    const { action, params } = req.body;
+    const result = await orchestrator.executeRealWorldAction(action, params);
+    res.json(result);
   } catch (error) {
     res.status(500).json({ success: false, error: String(error) });
   }

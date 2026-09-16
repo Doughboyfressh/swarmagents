@@ -1,6 +1,7 @@
 import { Agent, Resource, SwarmConfig, SwarmMetrics, WorldState, Structure, Threat, SwarmEvent } from '../types';
 import { getDatabase } from '../database';
 import { v4 as uuidv4 } from 'uuid';
+import axios from 'axios';
 
 export class AgentOrchestrator {
   private agents: Map<string, Agent> = new Map();
@@ -13,11 +14,16 @@ export class AgentOrchestrator {
   private events: SwarmEvent[] = [];
   private isRunning: boolean = false;
   private simulationInterval: NodeJS.Timeout | null = null;
+  private realWorldExecutorUrl: string | null = null;
 
-  constructor(config?: Partial<SwarmConfig>) {
+  constructor(config?: Partial<SwarmConfig>, enableRealWorld: boolean = false, executorUrl: string = 'http://localhost:5000') {
     this.config = this.getDefaultConfig();
     if (config) {
       this.config = { ...this.config, ...config };
+    }
+
+    if (enableRealWorld) {
+      this.realWorldExecutorUrl = executorUrl;
     }
 
     this.worldState = this.getDefaultWorldState();
@@ -542,14 +548,37 @@ export class AgentOrchestrator {
     this.initialize();
     console.log('🔄 Simulation reset');
   }
+
+  /**
+   * Execute a real-world action via the Python executor server
+   */
+  async executeRealWorldAction(action: string, params: Record<string, any> = {}): Promise<any> {
+    if (!this.realWorldExecutorUrl) {
+      console.warn('⚠️ Real-world execution is disabled');
+      return { success: false, error: 'Real-world execution is disabled' };
+    }
+
+    try {
+      const response = await axios.post(`${this.realWorldExecutorUrl}/execute`, {
+        action,
+        params,
+      });
+      
+      console.log(`🌍 Executed real-world action: ${action}`, response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Real-world action failed:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 // Singleton instance
 let orchestratorInstance: AgentOrchestrator | null = null;
 
-export function getOrchestrator(): AgentOrchestrator {
+export function getOrchestrator(enableRealWorld?: boolean, executorUrl?: string): AgentOrchestrator {
   if (!orchestratorInstance) {
-    orchestratorInstance = new AgentOrchestrator();
+    orchestratorInstance = new AgentOrchestrator(undefined, enableRealWorld || false, executorUrl || 'http://localhost:5000');
   }
   return orchestratorInstance;
 }

@@ -6,8 +6,9 @@ export class LLMService {
   private config: LLMConfig;
   private conversationHistory: LLMMessage[] = [];
   private isConnected: boolean = false;
+  private realWorldExecutorUrl: string | null = null;
 
-  constructor(config?: Partial<LLMConfig>) {
+  constructor(config?: Partial<LLMConfig>, enableRealWorld: boolean = false, executorUrl: string = 'http://localhost:5000') {
     this.config = {
       endpoint: process.env.LLM_ENDPOINT || 'http://localhost:8080',
       model: process.env.LLM_MODEL || 'qwen-3.6-27b',
@@ -17,13 +18,33 @@ export class LLMService {
       ...config,
     };
 
+    if (enableRealWorld) {
+      this.realWorldExecutorUrl = executorUrl;
+    }
+
     this.initializeSystemPrompt();
   }
 
   private initializeSystemPrompt(): void {
+    const realWorldCapabilities = this.realWorldExecutorUrl ? `
+REAL-WORLD EXECUTION CAPABILITIES:
+You can execute real actions on the user's Windows PC by outputting JSON in your response.
+Format: {"action": "action_type", "params": {...}}
+
+Available actions:
+- run_shell: Execute PowerShell/cmd commands ({"command": "dir"})
+- file_write: Create/write files ({"path": "C:\\Users\\You\\file.txt", "content": "text"})
+- file_read: Read file contents ({"path": "C:\\Users\\You\\file.txt"})
+- browser_open: Open URLs ({"url": "https://google.com"})
+- type_text: Type keyboard input ({"text": "Hello"})
+- click_mouse: Click at position ({"x": 100, "y": 200}) or current position
+- get_system_info: Get CPU/RAM/disk stats ({})
+
+SAFETY: Only execute actions when explicitly requested by the user. Always confirm destructive actions.` : '';
+
     this.conversationHistory = [{
       role: 'system',
-      content: `You are the central intelligence coordinator for an advanced agent swarm simulation. You control autonomous agents that exhibit emergent collective behavior.
+      content: `You are the central intelligence coordinator for an advanced agent swarm with REAL-WORLD execution capabilities. You control autonomous agents that exhibit emergent collective behavior AND can perform actual tasks on the user's computer.
 
 Your responsibilities:
 1. Analyze swarm state and provide strategic guidance
@@ -31,6 +52,7 @@ Your responsibilities:
 3. Identify patterns, anomalies, and opportunities
 4. Coordinate agent behaviors for collective goals
 5. Adapt strategies based on environmental conditions
+6. ${this.realWorldExecutorUrl ? 'EXECUTE real-world actions when requested (file operations, shell commands, browser control, etc.)' : 'Monitor simulation only (real-world execution disabled)'}
 
 Current capabilities:
 - Flocking behaviors (separation, alignment, cohesion)
@@ -42,8 +64,9 @@ Current capabilities:
 - Threat detection and collective defense
 - Q-learning for adaptive behavior
 - Multi-swarm dynamics
+${realWorldCapabilities}
 
-Be concise, strategic, and decisive. Provide actionable commands when appropriate.`,
+Be concise, strategic, and decisive. Provide actionable commands when appropriate. When executing real actions, output ONLY the JSON action object.`,
     }];
   }
 
@@ -61,7 +84,7 @@ Be concise, strategic, and decisive. Provide actionable commands when appropriat
     }
   }
 
-  async chat(userMessage: string, context?: any): Promise<LLMResponse> {
+  async chat(userMessage: string, context?: any): Promise<LLMResponse & { action?: any }> {
     if (!this.config.enabled) {
       return {
         content: 'LLM is disabled',
@@ -107,9 +130,24 @@ Be concise, strategic, and decisive. Provide actionable commands when appropriat
         }
       );
 
-      const assistantMessage = response.data.choices[0]?.message?.content || 'No response';
+      let assistantMessage = response.data.choices[0]?.message?.content || 'No response';
       const tokensUsed = response.data.usage?.total_tokens || 0;
       const latency = Date.now() - startTime;
+
+      // Check if response contains a real-world action JSON
+      let extractedAction = null;
+      if (this.realWorldExecutorUrl) {
+        const jsonMatch = assistantMessage.match(/\{[\s\S]*"action"[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            extractedAction = JSON.parse(jsonMatch[0]);
+            // Remove the JSON from the displayed message
+            assistantMessage = assistantMessage.replace(jsonMatch[0], '').trim();
+          } catch (e) {
+            console.warn('Failed to parse action JSON:', e);
+          }
+        }
+      }
 
       this.conversationHistory.push({
         role: 'assistant',
@@ -122,12 +160,19 @@ Be concise, strategic, and decisive. Provide actionable commands when appropriat
       this.saveConversation('user', fullMessage, 0, 0);
       this.saveConversation('assistant', assistantMessage, tokensUsed, latency);
 
-      return {
+      const result = {
         content: assistantMessage,
         tokensUsed,
         latency,
         success: true,
       };
+
+      // Include action if extracted
+      if (extractedAction) {
+        return { ...result, action: extractedAction };
+      }
+
+      return result;
     } catch (error) {
       this.isConnected = false;
       const latency = Date.now() - startTime;
@@ -217,14 +262,32 @@ PARAMETERS: [specific parameter changes if applicable]`;
       return { totalCalls: 0, totalTokens: 0, avgLatency: 0 };
     }
   }
+
+  /**
+   * Execute an action extracted from LLM response
+   */
+  async executeAction(action: any): Promise<any> {
+    if (!this.realWorldExecutorUrl || !action) {
+      return { success: false, error: 'Real-world execution not available' };
+    }
+
+    try {
+      const response = await axios.post(`${this.realWorldExecutorUrl}/execute`, action);
+      console.log(`🌍 LLM-triggered action executed: ${action.action}`, response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ LLM action execution failed:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 // Singleton instance
 let llmServiceInstance: LLMService | null = null;
 
-export function getLLMService(): LLMService {
+export function getLLMService(enableRealWorld?: boolean, executorUrl?: string): LLMService {
   if (!llmServiceInstance) {
-    llmServiceInstance = new LLMService();
+    llmServiceInstance = new LLMService(undefined, enableRealWorld || false, executorUrl || 'http://localhost:5000');
   }
   return llmServiceInstance;
 }
