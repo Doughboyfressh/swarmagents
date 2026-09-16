@@ -1,6 +1,8 @@
 """
 Enhanced Real World Executor with Vision, Memory, and Self-Correction
-Supports Qwen3.6-27B-VL vision capabilities, ChromaDB memory, critic agent verification, and skill libraries
+Supports Qwen3.6-27B native vision capabilities (built-in), ChromaDB memory, critic agent verification, and skill libraries
+
+Note: Qwen3.6-27B has native multimodal/vision support - no separate VL model needed!
 """
 
 import subprocess
@@ -180,15 +182,15 @@ class VisionSystem:
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
-    def analyze_screenshot_with_qwen_vl(self, llm_endpoint: str, prompt: str = "Describe what you see in this screenshot") -> str:
-        """Send screenshot to Qwen-VL for analysis"""
+    def analyze_screenshot_with_qwen(self, llm_endpoint: str, prompt: str = "Describe what you see in this screenshot") -> str:
+        """Send screenshot to Qwen3.6-27B for analysis (native vision support)"""
         screenshot_result = self.take_screenshot()
         
         if not screenshot_result['success']:
             return f"Failed to take screenshot: {screenshot_result.get('error', 'Unknown error')}"
         
         try:
-            # Format for Qwen-VL API (adjust based on your llama.cpp endpoint)
+            # Format for Qwen3.6-27B native vision API (multimodal built-in)
             messages = [
                 {
                     "role": "user",
@@ -202,7 +204,7 @@ class VisionSystem:
             response = requests.post(
                 f"{llm_endpoint}/v1/chat/completions",
                 json={
-                    "model": "qwen-vl",
+                    "model": "qwen-3.6-27b",  # Qwen3.6-27B has native vision support
                     "messages": messages,
                     "max_tokens": 512
                 },
@@ -429,7 +431,7 @@ class SkillLibrary:
 class EnhancedRealWorldExecutor:
     """
     Enhanced Real World Executor with:
-    - Vision capabilities (Qwen-VL integration)
+    - Vision capabilities (Qwen3.6-27B native multimodal support)
     - Long-term memory (ChromaDB)
     - Self-correction (Critic Agent)
     - Skill libraries
@@ -572,7 +574,7 @@ class EnhancedRealWorldExecutor:
             elif action_type == "analyze_screen":
                 return {
                     "success": True,
-                    "analysis": self.vision.analyze_screenshot_with_qwen_vl(
+                    "analysis": self.vision.analyze_screenshot_with_qwen(
                         self.llm_endpoint,
                         params.get("prompt", "Describe what you see")
                     )
@@ -707,7 +709,7 @@ if __name__ == "__main__":
     print(f"Screenshot: {result.get('filename', 'N/A')}")
     
     # Test 3: Analyze screen with vision
-    print("\n👁️ Test 3: Screen Analysis (Qwen-VL)")
+    print("\n👁️ Test 3: Screen Analysis (Qwen3.6-27B native vision)")
     result = executor.execute_action("analyze_screen", {"prompt": "What applications are open?"}, enable_critic=False)
     print(f"Analysis: {result.get('analysis', 'N/A')[:200]}...")
     

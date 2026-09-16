@@ -75,6 +75,10 @@ export class RealWorldExecutorClient {
       const response = await axios.post(`${this.baseUrl}/execute`, {
         action,
         params,
+      }, {
+        timeout: 120000, // 2 minutes timeout for complex tasks (vision, file ops)
+        maxBodyLength: 50 * 1024 * 1024, // 50MB for screenshots
+        maxContentLength: 50 * 1024 * 1024
       });
       return response.data;
     } catch (error: any) {
@@ -100,6 +104,10 @@ export class RealWorldExecutorClient {
       const response = await axios.post(`${this.baseUrl}/execute/batch`, {
         actions,
         stop_on_failure: stopOnFailure,
+      }, {
+        timeout: 300000, // 5 minutes for batch operations
+        maxBodyLength: 100 * 1024 * 1024, // 100MB
+        maxContentLength: 100 * 1024 * 1024
       });
       return response.data;
     } catch (error: any) {
