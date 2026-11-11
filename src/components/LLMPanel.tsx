@@ -23,7 +23,10 @@ export default function LLMPanel({ llmService, getContext }: LLMPanelProps) {
   }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Scroll the chat log itself. scrollIntoView also scrolls every ancestor, which pushed the
+    // whole page (and its header) off the top of the window on first load.
+    const log = messagesEndRef.current?.parentElement;
+    if (log) log.scrollTo({ top: log.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
   useEffect(() => {

@@ -1,1 +1,32 @@
-Nothing should be ignored based on the provided file changes. The only modified file is a TypeScript React component file (`src/components/DirectorPanel.tsx`), which is source code and should not be ignored. There are no build artifacts, dependencies, or temporary files in the change list.
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Local environment (copy .env.example to .env)
+.env
+.env.local
+.env.*.local
+
+# Runtime data
+agent_memory/
+backend/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite3
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Logs and OS/editor files
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

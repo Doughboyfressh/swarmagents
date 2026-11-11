@@ -15,7 +15,7 @@ else
     echo ""
     read -p "Continue without LLM? (y/n) " -n 1 -r
     echo
-    if [[ ! $reply =~ ^[Yy]$ ]]; then
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         exit 1
     fi
 fi

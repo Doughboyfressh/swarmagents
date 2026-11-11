@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type MutableRefObject } from 'react';
 import DirectorPanel from './DirectorPanel';
 import LLMPanel from './LLMPanel';
 import { StateManagerPanel } from './StateManagerPanel';
@@ -24,6 +24,8 @@ interface RightPanelProps {
   events: any[];
   isPaused: boolean;
   setIsPaused: (paused: boolean) => void;
+  agentsRef: MutableRefObject<any[]>;
+  configRef: MutableRefObject<SwarmConfig>;
 }
 
 type TabId = 'ai' | 'analytics' | 'system' | 'logs';
@@ -43,6 +45,8 @@ export default function RightPanel({
   events,
   isPaused,
   setIsPaused,
+  agentsRef,
+  configRef,
 }: RightPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('ai');
 
@@ -96,6 +100,8 @@ export default function RightPanel({
                 memoryEnabled: config.memoryEnabled,
                 environmentEnabled: config.environmentEnabled,
               }}
+              agentsRef={agentsRef}
+              configRef={configRef}
             />
             <LLMPanel
               llmService={llmService}

@@ -67,6 +67,7 @@ export default function App() {
   const pausedRef = useRef(isPaused);
   const msgCountRef = useRef(0);
   const timeRef = useRef(0);
+  const lastMetricsRef = useRef(-Infinity);
   const hiveMindRef = useRef(new HiveMind());
   const worldSimRef = useRef(new WorldSimulation());
   const eventLogRef = useRef(new EventLog());
@@ -310,7 +311,11 @@ export default function App() {
         recordingRef.current.recordFrame(ca, cr);
         setRecordingStats(recordingRef.current.getStats());
 
-        if (Math.floor(t * 10) % 30 === 0) {
+        // Refresh the dashboard every 3 simulation ticks (~20 times a second). The previous test,
+        // Math.floor(t * 10) % 30 === 0, only passed when t happened to land within 0.1 of a
+        // multiple of 3, which on a steady 60 Hz display almost never happens.
+        if (t - lastMetricsRef.current >= 3 || t < lastMetricsRef.current) {
+          lastMetricsRef.current = t;
           const m = calculateMetrics(ca, cr, cc);
           const updatedMetrics = {
             ...m,
@@ -646,6 +651,8 @@ export default function App() {
             llmService={llmServiceRef.current}
             stateManager={stateManagerRef.current}
             analyticsEngine={analyticsEngineRef.current}
+            agentsRef={agentsRef}
+            configRef={configRef}
             onExecuteAction={async (action: SwarmAction): Promise<ActionResult> => {
               // Execute the action based on type
               if (action.type === 'adjust_param' && action.param && action.value !== undefined) {

@@ -1,13 +1,17 @@
 import Database from 'better-sqlite3';
+import fs from 'fs';
 import path from 'path';
-
-const DB_PATH = path.join(__dirname, '../../data/swarm.db');
 
 let db: Database.Database;
 
 export function getDatabase(): Database.Database {
   if (!db) {
-    db = new Database(DB_PATH);
+    // Resolved on first use so DB_PATH from .env is honoured, and relative to where the server is
+    // started (the backend folder) so `npm run dev` and `npm start` share one database.
+    const dbPath = path.resolve(process.env.DB_PATH || path.join('data', 'swarm.db'));
+    // The data folder is git-ignored, so it does not exist on a fresh clone.
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    db = new Database(dbPath);
     db.pragma('journal_mode = WAL');
     db.pragma('synchronous = NORMAL');
   }
