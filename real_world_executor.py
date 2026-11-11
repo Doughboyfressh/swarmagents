@@ -44,7 +44,8 @@ else:
     Image = ImageMock
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for React frontend
+# Only the local swarm UI may call this server: it can run commands on this machine.
+CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173"])
 
 # Configuration
 ALLOWED_ROOTS = [os.path.expanduser("~"), os.getcwd(), "C:\\\\"]
@@ -270,4 +271,4 @@ if __name__ == '__main__':
     print("\n   Running on http://localhost:5000")
     print("   Press Ctrl+C to stop\n")
     
-    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+    app.run(host='127.0.0.1', port=5000, debug=False, threaded=True)
